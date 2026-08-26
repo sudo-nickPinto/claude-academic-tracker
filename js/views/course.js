@@ -1,8 +1,8 @@
 import { courses } from "../config.js";
 import { load } from "../store.js";
 import {
-  today, daysLeft, startBy, rowState, shouldHaveStarted, isDone, isNamed,
-  isLater, surfacesOn, horizonOf,
+  today, daysLeft, startBy, realisticStart, rowState, shouldHaveStarted, isDone, isNamed,
+  isLater, surfacesOn, horizonOf, hasCalendar,
 } from "../compute.js";
 import { esc, fmtDate, fmtHours, fmtPct, pill, bar, daysLabel, emptyState } from "../ui.js";
 import { openTaskDialog, toggleDone, surfaceNow } from "./taskdialog.js";
@@ -39,6 +39,7 @@ export function renderCourse(outlet, id) {
     });
 
   const active = open.filter((t) => !isLater(t, ref, horizon));
+  const withCal = hasCalendar(state);
   const hours = active.reduce((s, t) => s + (t.estMin || 0), 0) / 60;
   const pctDone = all.length ? (all.length - open.length) / all.length : 0;
 
@@ -79,7 +80,7 @@ export function renderCourse(outlet, id) {
       <span class="small faint">${visible.length} shown</span>
     </div>
 
-    ${visible.length ? table(visible, ref, horizon) : emptyState(
+    ${visible.length ? table(visible, ref, horizon, state, withCal) : emptyState(
       emptyHeadline(f, later.length),
       f.q ? "" : "Add one with the New task button.")}`;
 
@@ -95,7 +96,7 @@ function emptyHeadline(f, laterCount) {
     : "No open tasks — you're clear.";
 }
 
-function table(rows, ref, horizon) {
+function table(rows, ref, horizon, state, withCal) {
   return `
   <div class="table-wrap">
     <table>
@@ -103,45 +104,51 @@ function table(rows, ref, horizon) {
         <tr>
           <th style="width:34px"><span class="sr">Done</span></th>
           <th>Task</th>
-          <th>Type</th>
-          <th>Priority</th>
+          <th data-col="t2">Type</th>
+          <th data-col="t3">Priority</th>
           <th>Status</th>
           <th class="num">Due</th>
           <th class="num">Days</th>
-          <th class="num">Est.</th>
-          <th class="num">Start by</th>
+          <th class="num" data-col="t1">Est.</th>
+          <th class="num" data-col="t1">Start by</th>
           <th style="width:52px"></th>
         </tr>
       </thead>
-      <tbody>${rows.map((t) => row(t, ref, horizon)).join("")}</tbody>
+      <tbody>${rows.map((t) => row(t, ref, horizon, state, withCal)).join("")}</tbody>
     </table>
   </div>`;
 }
 
-function row(t, ref, horizon) {
+function row(t, ref, horizon, state, withCal) {
   const left = daysLeft(t, ref);
   const start = startBy(t);
+  const real = withCal ? realisticStart(t, state, ref) : null;
   const late = shouldHaveStarted(t, ref);
   const later = isLater(t, ref, horizon);
   const surfaces = later ? surfacesOn(t, horizon) : null;
+  const est = t.estMin ? `${t.estMin}m` : "\u2014";
 
   return `
   <tr data-state="${later ? "later" : rowState(t, ref)}" data-id="${t.id}" data-later="${later}">
-    <td><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
-    <td>
+    <td data-cell="check"><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
+    <td data-cell="main">
       <span class="cell-main">${esc(t.task)}</span>
-      ${later ? `<span class="tag tag-later">Later · surfaces ${fmtDate(surfaces)}${t.activeFrom ? " (you set this)" : ""}</span>` : ""}
+      ${later ? `<span class="tag tag-later">Later \u00b7 surfaces ${fmtDate(surfaces)}${t.activeFrom ? " (you set this)" : ""}</span>` : ""}
       ${t.details ? `<span class="cell-sub">${esc(t.details)}</span>` : ""}
       ${t.source ? `<span class="cell-sub faint">${esc(t.source)}</span>` : ""}
+      <span class="cell-fold" data-when="t1">${start ? `Start by ${fmtDate(start)}` : "No start date"} \u00b7 ${est} est</span>
+      <span class="cell-fold cell-fold-inline" data-when="t2"><span class="tag">${esc(t.type)}</span></span>
+      <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span>
     </td>
-    <td class="nowrap"><span class="tag">${esc(t.type)}</span></td>
-    <td>${pill(t.priority)}</td>
-    <td>${pill(t.status)}</td>
-    <td class="num nowrap">${fmtDate(t.due)}</td>
-    <td class="num nowrap days-left" data-neg="${left !== null && left < 0}">${daysLabel(left)}</td>
-    <td class="num nowrap">${t.estMin ? `${t.estMin}m` : "—"}</td>
-    <td class="num nowrap ${late ? "start-flag" : ""}">${start ? fmtDate(start) : "—"}</td>
-    <td class="nowrap">
+    <td data-col="t2" data-label="Type"><span class="tag">${esc(t.type)}</span></td>
+    <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
+    <td data-label="Status">${pill(t.status)}</td>
+    <td class="num nowrap" data-label="Due">${fmtDate(t.due)}</td>
+    <td class="num nowrap days-left" data-neg="${left !== null && left < 0}" data-label="Days left">${daysLabel(left)}</td>
+    <td class="num nowrap" data-col="t1" data-label="Est.">${est}</td>
+    <td class="num nowrap ${late ? "start-flag" : ""}" data-col="t1" data-label="Start by">${start ? fmtDate(start) : "\u2014"}
+      ${real && real !== start ? `<span class="cell-sub faint" title="Allowing for the time already committed on your calendar">cal. ${fmtDate(real)}</span>` : ""}</td>
+    <td class="nowrap" data-cell="act">
       ${later ? '<button class="btn btn-ghost btn-sm surface" type="button" title="Move this into the active list now">Surface</button>' : ""}
       <button class="btn btn-ghost btn-sm edit" type="button">Edit</button>
     </td>

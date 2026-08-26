@@ -128,7 +128,13 @@ a { color: var(--progress); }
 }
 
 .main { padding: var(--sp-6) var(--sp-6) var(--sp-7); min-width: 0; }
-.view { max-width: 1180px; margin: 0 auto; }
+/* 1180px left a laptop's last 300px empty while the tables inside scrolled sideways.
+   The content is dense and tabular; it should use the monitor it's given. */
+.view { max-width: 1440px; margin: 0 auto; }
+
+/* Between the sidebar breakpoint and a wide desktop, page padding is the most
+   expensive thing on screen — it costs table columns and buys nothing. */
+@media (max-width: 1240px) { .main { padding: var(--sp-5) var(--sp-4) var(--sp-7); } }
 
 .view-head {
   display: flex;

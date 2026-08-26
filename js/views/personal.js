@@ -33,8 +33,8 @@ export function renderPersonal(outlet) {
           <tr>
             <th style="width:34px"></th>
             <th>Task</th>
-            <th>Notes</th>
-            <th>Priority</th>
+            <th data-col="t1">Notes</th>
+            <th data-col="t3">Priority</th>
             <th>Status</th>
             <th class="num">Due</th>
             <th class="num">Days</th>
@@ -46,14 +46,16 @@ export function renderPersonal(outlet) {
             const left = daysLeft(t, ref);
             return `
             <tr data-state="${rowState(t, ref)}" data-id="${t.id}">
-              <td><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
-              <td><span class="cell-main">${esc(t.task)}</span></td>
-              <td class="muted small">${esc(t.notes) || "—"}</td>
-              <td>${pill(t.priority)}</td>
-              <td>${pill(t.status)}</td>
-              <td class="num nowrap">${fmtDate(t.due)}</td>
-              <td class="num nowrap days-left" data-neg="${left !== null && left < 0}">${daysLabel(left)}</td>
-              <td><button class="btn btn-ghost btn-sm edit" type="button">Edit</button></td>
+              <td data-cell="check"><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
+              <td data-cell="main"><span class="cell-main">${esc(t.task)}</span>
+                ${t.notes ? `<span class="cell-fold" data-when="t1">${esc(t.notes)}</span>` : ""}
+                <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span></td>
+              <td class="muted small" data-col="t1" data-label="Notes">${esc(t.notes) || "—"}</td>
+              <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
+              <td data-label="Status">${pill(t.status)}</td>
+              <td class="num nowrap" data-label="Due">${fmtDate(t.due)}</td>
+              <td class="num nowrap days-left" data-neg="${left !== null && left < 0}" data-label="Days left">${daysLabel(left)}</td>
+              <td data-cell="act"><button class="btn btn-ghost btn-sm edit" type="button">Edit</button></td>
             </tr>`;
           }).join("")}
         </tbody>

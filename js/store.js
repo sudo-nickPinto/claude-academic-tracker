@@ -10,10 +10,13 @@ import { seedTasks, seedPersonal, seedGrades } from "./seed.js";
 // The key stays at v1 across version bumps: changing it would orphan saved data.
 // `version` records the shape, and normalize() migrates older payloads forward.
 const KEY = "academic-tracker/v1";
-const VERSION = 2;
+const VERSION = 3;
 
 const listeners = new Set();
 let state = null;
+
+/** Imported calendar events, kept apart from tasks — they are time, not work. */
+const emptyCalendar = () => ({ events: [], importedAt: null, filename: null, stats: null });
 
 function seedState() {
   return {
@@ -22,6 +25,7 @@ function seedState() {
     personal: structuredClone(seedPersonal),
     grades: structuredClone(seedGrades),
     prefs: { theme: "system", includePersonalInWeek: false, horizonDays },
+    calendar: emptyCalendar(),
   };
 }
 
@@ -56,6 +60,10 @@ function normalize(raw) {
     personal: Array.isArray(raw.personal) ? raw.personal : [],
     grades,
     prefs: { ...base.prefs, ...(raw.prefs || {}) },
+    // v2 → v3: an imported Outlook calendar. Absent on every older save, which is
+    // correct — no calendar means no committed time, and the app reads the same
+    // as it did before the feature existed.
+    calendar: { ...emptyCalendar(), ...(raw.calendar || {}) },
   };
 }
 

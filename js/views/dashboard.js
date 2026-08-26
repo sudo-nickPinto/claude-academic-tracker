@@ -1,7 +1,7 @@
 import { courses } from "../config.js";
 import { load, update } from "../store.js";
 import {
-  today, dashboardStats, perCourse, upcoming, workload14, horizonList,
+  today, dashboardStats, perCourse, upcoming, workload14, horizonList, hasCalendar,
   daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf,
 } from "../compute.js";
 import {
@@ -33,7 +33,7 @@ export function renderDashboard(outlet) {
 
     <section class="section split">
       ${weekCard(week, ref, includePersonal)}
-      ${sideColumn(days, horizon, ref)}
+      ${sideColumn(days, horizon, ref, hasCalendar(state))}
     </section>
 
     <section class="section">
@@ -101,9 +101,9 @@ function weekCard(week, ref, includePersonal) {
       <table>
         <thead>
           <tr>
-            <th>Course</th><th>Task</th><th>Priority</th><th>Status</th>
+            <th>Course</th><th>Task</th><th data-col="t3">Priority</th><th>Status</th>
             <th class="num">Due</th><th class="num">Days</th>
-            <th class="num">Est.</th><th class="num">Start by</th>
+            <th class="num" data-col="t1">Est.</th><th class="num" data-col="t1">Start by</th>
           </tr>
         </thead>
         <tbody>
@@ -112,17 +112,19 @@ function weekCard(week, ref, includePersonal) {
             const start = startBy(t);
             return `
             <tr data-state="${rowState(t, ref)}">
-              <td class="nowrap"><span class="chip" style="--accent:var(--c-${t.course})">${esc(t.course)}</span></td>
-              <td>
+              <td class="nowrap" data-cell="check"><span class="chip" style="--accent:var(--c-${t.course})">${esc(t.course)}</span></td>
+              <td data-cell="main">
                 <span class="cell-main">${esc(t.task)}</span>
                 ${t.type ? `<span class="cell-sub faint">${esc(t.type)}</span>` : ""}
+                <span class="cell-fold" data-when="t1">${start ? `Start by ${fmtDate(start)}` : "No start date"} · ${t.estMin ? `${t.estMin}m` : "—"} est</span>
+                <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span>
               </td>
-              <td>${pill(t.priority)}</td>
-              <td>${pill(t.status)}</td>
-              <td class="num nowrap">${weekday(t.due)} ${fmtDate(t.due)}</td>
-              <td class="num nowrap days-left" data-neg="${left < 0}">${daysLabel(left)}</td>
-              <td class="num nowrap">${t.estMin ? `${t.estMin}m` : "—"}</td>
-              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}">${start ? fmtDate(start) : "—"}</td>
+              <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
+              <td data-label="Status">${pill(t.status)}</td>
+              <td class="num nowrap" data-label="Due">${weekday(t.due)} ${fmtDate(t.due)}</td>
+              <td class="num nowrap days-left" data-neg="${left < 0}" data-label="Days left">${daysLabel(left)}</td>
+              <td class="num nowrap" data-col="t1" data-label="Est.">${t.estMin ? `${t.estMin}m` : "—"}</td>
+              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}" data-col="t1" data-label="Start by">${start ? fmtDate(start) : "—"}</td>
             </tr>`;
           }).join("")}
         </tbody>
@@ -131,8 +133,9 @@ function weekCard(week, ref, includePersonal) {
   </div>`;
 }
 
-function sideColumn(days, horizon, ref) {
+function sideColumn(days, horizon, ref, withCal) {
   const heavy = days.filter((d) => d.heavy);
+  const tight = days.filter((d) => d.overbooked);
   const totalHours = days.reduce((s, d) => s + d.hours, 0);
 
   return `
@@ -140,31 +143,42 @@ function sideColumn(days, horizon, ref) {
     <div class="card">
       <div class="card-head">
         <div><h2>Next 14 days</h2>
-          <span class="hint">${fmtHours(totalHours)}h of work scheduled${heavy.length ? ` · ${heavy.length} heavy day${heavy.length > 1 ? "s" : ""}` : ""}</span>
+          <span class="hint">${fmtHours(totalHours)}h of work scheduled${
+            withCal
+              ? ` · ${fmtHours(days.reduce((sum, d) => sum + d.committed, 0))}h already committed${
+                  tight.length ? ` · ${tight.length} day${tight.length > 1 ? "s" : ""} overbooked` : ""}`
+              : heavy.length ? ` · ${heavy.length} heavy day${heavy.length > 1 ? "s" : ""}` : ""}</span>
         </div>
       </div>
       <div class="card-pad">
         ${barChartV(days.map((d) => ({
           value: Math.round(d.hours * 10) / 10,
+          committed: withCal ? Math.round(d.committed * 10) / 10 : 0,
           label: d.offset % 2 === 0 ? weekday(d.date).slice(0, 1) : "",
           heavy: d.heavy,
-          title: `${fmtDateFull(d.date)} — ${fmtHours(d.hours)}h, ${d.count} task${d.count === 1 ? "" : "s"}`,
+          overbooked: d.overbooked,
+          title: `${fmtDateFull(d.date)} — ${fmtHours(d.hours)}h of work, ${d.count} task${d.count === 1 ? "" : "s"}${
+            withCal ? `; ${fmtHours(d.committed)}h committed, ${fmtHours(d.free)}h free` : ""}`,
         })), { format: (v) => (v ? `${v}` : "") })}
         <div class="legend">
           <span><i style="background:var(--progress)"></i>Hours due</span>
-          <span><i style="background:var(--danger)"></i>Heavy day (4h+)</span>
+          ${withCal ? '<span><i style="background:var(--text-faint);opacity:.45"></i>Committed (calendar)</span>' : ""}
+          <span><i style="background:var(--danger)"></i>${withCal ? "More work than free hours" : "Heavy day (4h+)"}</span>
         </div>
       </div>
       ${days.some((d) => d.count) ? `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Day</th><th class="num">Tasks</th><th class="num">Hours</th></tr></thead>
+          <thead><tr><th>Day</th><th class="num">Tasks</th><th class="num">Work</th>
+            ${withCal ? '<th class="num" data-col="t2">Class</th><th class="num">Free</th>' : ""}</tr></thead>
           <tbody>
-            ${days.filter((d) => d.count).map((d) => `
-              <tr data-state="${d.heavy ? "overdue" : ""}">
-                <td class="nowrap">${weekday(d.date)} ${fmtDate(d.date)}${d.offset === 0 ? ' <span class="tag">today</span>' : ""}</td>
-                <td class="num">${d.count}</td>
-                <td class="num">${fmtHours(d.hours)}h</td>
+            ${days.filter((d) => d.count || (withCal && d.committed)).map((d) => `
+              <tr data-state="${d.overbooked || d.heavy ? "overdue" : ""}">
+                <td data-cell="main">${weekday(d.date)} ${fmtDate(d.date)}${d.offset === 0 ? ' <span class="tag">today</span>' : ""}</td>
+                <td class="num" data-label="Tasks">${d.count}</td>
+                <td class="num" data-label="Work">${fmtHours(d.hours)}h</td>
+                ${withCal ? `<td class="num" data-col="t2" data-label="Class">${d.committed ? `${fmtHours(d.committed)}h` : "—"}</td>
+                  <td class="num days-left" data-neg="${d.overbooked}" data-label="Free">${fmtHours(d.free)}h</td>` : ""}
               </tr>`).join("")}
           </tbody>
         </table>
@@ -219,33 +233,38 @@ function courseTable(rows, ref) {
     <table>
       <thead>
         <tr>
-          <th>Course</th><th style="min-width:120px">Progress</th>
-          <th class="num">Active</th><th class="num">Later</th>
-          <th class="num">Overdue</th><th class="num">Due ≤7d</th>
-          <th class="num">Active hrs</th><th>Next big one</th><th class="num">Days away</th>
+          <th>Course</th><th style="min-width:120px" data-col="t2">Progress</th>
+          <th class="num">Active</th><th class="num" data-col="t3">Later</th>
+          <th class="num">Overdue</th><th class="num" data-col="t3">Due ≤7d</th>
+          <th class="num" data-col="t1">Active hrs</th>
+          <th data-col="t1">Next big one</th><th class="num" data-col="t1">Days away</th>
         </tr>
       </thead>
       <tbody>
         ${rows.map((c) => `
         <tr>
-          <td class="nowrap">
+          <td data-cell="main">
             <span class="chip" style="--accent:var(--c-${c.course})">${esc(c.course)}</span>
             <span class="cell-sub">${esc(courses[c.course].name)}</span>
+            <span class="cell-fold" data-when="t1">${fmtHours(c.activeHours)}h active${c.nextBig
+              ? ` · next: ${esc(c.nextBig.task)} (${fmtDate(c.nextBig.due)})` : ""}</span>
+            <span class="cell-fold" data-when="t2">${fmtPct(c.pctDone)} complete</span>
+            <span class="cell-fold" data-when="t3">${c.later || 0} later · ${c.dueWeek} due within 7 days</span>
           </td>
-          <td>
+          <td data-col="t2" data-label="Progress">
             <div class="bar-row" style="--accent:var(--c-${c.course})">
               ${bar(c.pctDone)}<span class="num">${fmtPct(c.pctDone)}</span>
             </div>
           </td>
-          <td class="num">${c.active}</td>
-          <td class="num faint">${c.later || "—"}</td>
-          <td class="num ${c.overdue ? "days-left" : ""}" data-neg="${c.overdue > 0}">${c.overdue}</td>
-          <td class="num">${c.dueWeek}</td>
-          <td class="num">${fmtHours(c.activeHours)}</td>
-          <td>${c.nextBig
+          <td class="num" data-label="Active">${c.active}</td>
+          <td class="num faint" data-col="t3" data-label="Later">${c.later || "—"}</td>
+          <td class="num ${c.overdue ? "days-left" : ""}" data-neg="${c.overdue > 0}" data-label="Overdue">${c.overdue}</td>
+          <td class="num" data-col="t3" data-label="Due ≤7d">${c.dueWeek}</td>
+          <td class="num" data-col="t1" data-label="Active hrs">${fmtHours(c.activeHours)}</td>
+          <td data-col="t1" data-label="Next big one">${c.nextBig
             ? `<span class="cell-main">${esc(c.nextBig.task)}</span><span class="cell-sub faint">${esc(c.nextBig.type)} · ${fmtDate(c.nextBig.due)}</span>`
             : '<span class="faint">—</span>'}</td>
-          <td class="num nowrap">${c.daysAway === null ? "—" : daysLabel(c.daysAway)}</td>
+          <td class="num nowrap" data-col="t1" data-label="Days away">${c.daysAway === null ? "—" : daysLabel(c.daysAway)}</td>
         </tr>`).join("")}
       </tbody>
     </table>

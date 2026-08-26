@@ -4,6 +4,7 @@ import { courseTasks, isDone, isNamed } from "./compute.js";
 import { esc, openDialog } from "./ui.js";
 
 import { renderDashboard } from "./views/dashboard.js";
+import { renderCalendar } from "./views/calendar.js";
 import { renderCourse } from "./views/course.js";
 import { renderPersonal } from "./views/personal.js";
 import { renderGrades } from "./views/grades.js";
@@ -17,6 +18,7 @@ const app = document.getElementById("app");
 
 const routes = {
   dashboard: () => renderDashboard(outlet),
+  calendar: () => renderCalendar(outlet),
   personal: () => renderPersonal(outlet),
   grades: () => renderGrades(outlet),
   analytics: () => renderAnalytics(outlet),
@@ -58,6 +60,7 @@ function applyTheme() {
 
 const NAV_MAIN = [
   { href: "#/dashboard", label: "Dashboard", route: "dashboard" },
+  { href: "#/calendar", label: "Calendar", route: "calendar" },
   { href: "#/analytics", label: "Analytics", route: "analytics" },
   { href: "#/grades", label: "Grades", route: "grades" },
 ];

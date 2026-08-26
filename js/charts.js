@@ -39,16 +39,22 @@ export function barChartH(rows, { color = "var(--progress)", format = (v) => v }
 /** Vertical bars for the 14-day workload — days read left to right, like a calendar. */
 export function barChartV(days, { format = (v) => v } = {}) {
   const w = 460, h = 150, pad = 26, base = h - 24;
-  const max = nice(Math.max(1, ...days.map((d) => d.value)));
+  // `committed` stacks under the work bar, so the axis shows the whole day, not
+  // just the coursework half of it.
+  const max = nice(Math.max(1, ...days.map((d) => d.value + (d.committed || 0))));
   const slot = (w - pad) / days.length;
   const bw = Math.min(22, slot * 0.62);
+  const scale = (v) => (v / max) * (base - 14);
 
   const bars = days.map((d, i) => {
     const x = pad + i * slot + (slot - bw) / 2;
-    const bh = (d.value / max) * (base - 14);
-    const y = base - bh;
-    const fill = d.heavy ? "var(--danger)" : "var(--progress)";
+    const ch = scale(d.committed || 0);
+    const bh = scale(d.value);
+    const y = base - ch - bh;
+    const fill = d.heavy || d.overbooked ? "var(--danger)" : "var(--progress)";
     return `
+      ${d.committed ? `<rect class="b" x="${x}" y="${base - ch}" width="${bw}" height="${Math.max(0, ch)}"
+            rx="3" fill="var(--text-faint)" opacity="0.45"><title>${esc(d.title)}</title></rect>` : ""}
       <rect class="b" x="${x}" y="${y}" width="${bw}" height="${Math.max(0, bh)}" rx="3" fill="${fill}"
             opacity="${d.value ? 1 : 0.18}"><title>${esc(d.title)}</title></rect>
       ${d.value ? `<text class="val" x="${x + bw / 2}" y="${y - 4}" text-anchor="middle" style="font-size:9px">${esc(format(d.value))}</text>` : ""}

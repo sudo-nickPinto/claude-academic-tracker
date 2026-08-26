@@ -52,6 +52,7 @@
       <dt>CS440 · CS391 · CS360 · ENG216</dt><dd>One view per class, colour-coded. This is where you actually add, edit and complete work.</dd>
       <dt>Personal</dt><dd>Anything that is not coursework. Five fields, deliberately simple. Kept out of every Dashboard and Analytics number.</dd>
       <dt>Grades</dt><dd>Weights and scores per course, your current grade, and what you would need to average on everything left.</dd>
+      <dt>Calendar</dt><dd>A month at a glance: a dot per deadline, a bar for how much of the day is already committed. Click a day for its events, its deadlines and what's left of it.</dd>
       <dt>Analytics</dt><dd>Cross-course roll-up: outlook, priority, status and type of work.</dd>
       <dt>Groups &amp; Schedules</dt><dd>Reference only. Your CS440 project groups and both tentative class schedules.</dd>
     </dl>
@@ -69,7 +70,7 @@
     <h3>Columns that calculate themselves</h3>
     <dl>
       <dt>Days Left</dt><dd>Due date minus today. Negative means overdue. Blank once the task is done.</dd>
-      <dt>Start By</dt><dd>Working backward from the due date at about 90 focused minutes a day. It turns amber once that day has arrived and the task still isn't done.</dd>
+      <dt>Start By</dt><dd>Working backward from the due date at about 90 focused minutes a day. It turns amber once that day has arrived and the task still isn't done. With a calendar loaded, a second advisory date appears underneath when routing around your class time would mean starting sooner.</dd>
       <dt>Surfaces on</dt><dd>The day a task stops being “Later” and joins today's list — whichever comes first, 21 days before it's due or its Start By date.</dd>
     </dl>
 
@@ -80,6 +81,16 @@
       <dt>Starting it surfaces it</dt><dd>Set the status to In Progress or Waiting / Blocked and it joins the active list straight away.</dd>
       <dt>Or do it by hand</dt><dd><strong>Surface</strong> on the row, or the Timing box in the edit dialog, which also lets you push a task back to a date you pick. Clear that date to go back to automatic.</dd>
       <dt>Nothing is hidden</dt><dd>The dashboard's <strong>On the horizon</strong> card lists what's waiting and when each item arrives. Every course tab has a Later filter. Settings changes the 21 days.</dd>
+    </dl>
+
+    <h3>Your Outlook calendar</h3>
+    <p><strong>Settings → Outlook calendar</strong> takes an <code>.ics</code> file exported from Outlook. Nothing is uploaded — the file is read in this browser.</p>
+    <dl>
+      <dt>Events stay events</dt><dd>Nothing becomes a task. What they add is <strong>committed time</strong>: hours already spoken for, so the forecast can say “6h of work due, 5h of it is class, 1h free” instead of just “6h due.”</dd>
+      <dt>What gets kept</dt><dd>Anything inside the term. Recurring classes are expanded into their real meetings, fall-break gaps and moved meetings included.</dd>
+      <dt>What gets skipped</dt><dd>All-day events, cancelled events, and anything outside the term. Events shown as <em>Free</em> in Outlook are listed but cost you nothing. The import screen says exactly what it skipped and why.</dd>
+      <dt>Why a file and not a link</dt><dd>A published Outlook calendar URL can't be read by a page on another site — the browser blocks it, and getting around that needs a server or a Microsoft account. A saved file keeps everything on your machine.</dd>
+      <dt>Undoing it</dt><dd>Re-importing the same file changes nothing. <strong>Remove calendar</strong> puts every number back where it was; your tasks are never touched.</dd>
     </dl>
 
     <h3>What the colours mean</h3>
@@ -94,6 +105,7 @@
     <dl>
       <dt>Put an estimate on everything</dt><dd>Est. Min is what makes Start By, the workload chart and the hours numbers work at all.</dd>
       <dt>Fill in Grades at the start of term</dt><dd>Ten minutes with four syllabi, and the “what do I need on the final” answer is there all semester.</dd>
+      <dt>Re-import your calendar each term</dt><dd>Or whenever your schedule really changes. It takes about fifteen seconds and it's what keeps the forecast honest.</dd>
       <dt>Export now and then</dt><dd>Data lives in this browser only. Settings → Export JSON is your backup.</dd>
     </dl>
   </div>

@@ -145,9 +145,16 @@ tbody tr:hover { background: var(--surface-2); }
 
 td.num, th.num { text-align: right; }
 .cell-main { font-weight: 600; }
+/* Wraps to two lines instead of one long nowrap line: a single unbreakable line
+   sets the table's minimum width, which is how a details string ends up pushing
+   four columns off the screen. */
 .cell-sub {
-  display: block; color: var(--text-muted); font-size: var(--step--1);
-  max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--text-muted); font-size: var(--step--1);
+  max-width: 52ch; overflow: hidden;
 }
 .nowrap { white-space: nowrap; }
 
@@ -378,4 +385,277 @@ tr[data-mine="true"] > td:first-child { border-left: 3px solid var(--accent); }
   .stat-grid { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
   .card-pad, .card-head { padding: var(--sp-3) var(--sp-4); }
   .dialog-body, .dialog-head, .dialog-foot { padding-inline: var(--sp-4); }
+}
+
+/* ------------------------------------------------- responsive table folding */
+
+/* Container queries, not media queries, on purpose: the Dashboard's week list sits
+   in a 1.55fr column while a course table gets the whole page, so the same viewport
+   gives them very different room. Each table folds against its own width. */
+.table-wrap { container-type: inline-size; container-name: tbl; }
+
+/* Folded values are already in the DOM inside the primary cell; CSS reveals the one
+   matching whichever tier just disappeared. Data moves — it never vanishes. */
+.cell-fold {
+  display: none;
+  margin-top: 3px;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+.cell-fold .tag, .cell-fold .pill { vertical-align: baseline; }
+/* A folded tag or pill is one short token — it shares a line with its neighbours
+   instead of claiming one of its own and making every row taller. */
+.cell-fold-inline { margin-right: 5px; }
+.cell-fold-inline:not([hidden]) { margin-top: 4px; }
+
+/* Drop order is the reverse of how much the column is worth on a glance:
+   Start by and Est. first, then Type, then Priority. Task, Due, Days and Status
+   never fold — they are the reason the table exists. */
+@container tbl (max-width: 1010px) {
+  [data-col="t1"] { display: none; }
+  .cell-fold[data-when="t1"] { display: block; }
+}
+@container tbl (max-width: 820px) {
+  [data-col="t2"] { display: none; }
+  .cell-fold[data-when="t2"] { display: block; }
+  .cell-fold-inline[data-when="t2"] { display: inline-block; }
+}
+@container tbl (max-width: 700px) {
+  [data-col="t3"] { display: none; }
+  .cell-fold[data-when="t3"] { display: block; }
+  .cell-fold-inline[data-when="t3"] { display: inline-block; }
+}
+
+/* Below ~560px a ten-column table is not a table. Rows become cards with their
+   header text moved inline, and every folded column comes back — there is room
+   for all of it once the columns stop competing for the same line. */
+@container tbl (max-width: 620px) {
+  table { display: block; }
+  thead { display: none; }
+  tbody { display: block; }
+  .cell-fold { display: none !important; }
+
+  tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px var(--sp-2);
+    align-items: start;
+    padding: var(--sp-3);
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr:last-child { border-bottom: none; }
+
+  tbody td {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 8.5em minmax(0, 1fr);
+    gap: var(--sp-2);
+    align-items: baseline;
+    padding: 2px 0;
+    border-bottom: none;
+    text-align: left;
+  }
+  tbody td.num { text-align: left; }
+  tbody td[data-label]::before {
+    content: attr(data-label);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: var(--text-faint);
+  }
+  tbody td:not([data-label]) { display: block; }
+  tbody td:empty { display: none; }
+
+  /* Folded columns come back as labelled lines — this has to out-specify both the
+     tier rules that hid them and the plain `tbody td` above. */
+  tbody td[data-col] { display: grid; }
+  tbody td[data-col]:not([data-label]) { display: block; }
+
+  /* A pill is inline-flex, and a grid item made of one would stretch the full
+     width of the value column. Keep every badge the size of its own text. */
+  tbody td > .pill, tbody td > .tag, tbody td > .chip { justify-self: start; }
+
+  tbody td[data-cell="check"] { padding-top: 3px; }
+
+  /* The checkbox and the task name share the card's first line. */
+  tbody td[data-cell="check"] { grid-column: 1; grid-row: 1; width: auto; }
+  tbody td[data-cell="main"] { grid-column: 2; grid-row: 1; }
+  tbody td[data-cell="act"] { justify-self: start; }
+
+  /* The urgency stripe belongs to the whole card now, not to a first cell that is
+     no longer on the left edge. */
+  tr[data-state] > td:first-child { border-left: none; }
+  tr[data-state] {
+    border-left: 3px solid transparent;
+    border-radius: var(--radius-sm);
+  }
+  tr[data-state="overdue"] { border-left-color: var(--danger); }
+  tr[data-state="soon"] { border-left-color: var(--warning); }
+  tr[data-state="later"] { border-left-color: var(--border-strong); }
+
+  .cell-main { font-size: var(--step-1); }
+  .cell-sub { max-width: none; }
+  .tag-later { margin-top: var(--sp-1); }
+}
+
+/* --------------------------------------------------------------- calendar */
+
+.cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+.cal-card { padding: var(--sp-4); }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-dow {
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-align: center;
+  padding-bottom: var(--sp-1);
+}
+
+/* A day is a button because clicking one is the whole interaction. Fixed aspect
+   keeps the grid square-ish at any width without a hardcoded row height. */
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-height: 62px;
+  padding: var(--sp-1) 5px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: left;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.cal-cell:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.cal-cell.is-blank { border-color: transparent; background: none; pointer-events: none; }
+.cal-cell[data-today="true"] { border-color: var(--progress); }
+.cal-cell[data-selected="true"] {
+  background: color-mix(in oklab, var(--progress) 12%, var(--surface));
+  border-color: var(--progress);
+  box-shadow: var(--ring);
+}
+.cal-num { font-size: var(--step--1); font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal-cell[data-today="true"] .cal-num { color: var(--progress); }
+
+/* Committed time as a fill bar: how much of a long day is already spoken for. */
+.cal-busy {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.cal-busy::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: var(--fill, 0%);
+  border-radius: 999px;
+  background: var(--text-faint);
+}
+.cal-busy.is-key { width: 34px; }
+
+.cal-dots { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; margin-top: auto; }
+.cal-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.cal-more { font-size: 10px; color: var(--text-faint); font-weight: 700; }
+
+.cal-legend {
+  display: flex; flex-wrap: wrap; gap: var(--sp-4);
+  margin-top: var(--sp-3); padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--step--1); color: var(--text-muted);
+}
+.cal-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+
+.cal-day { position: sticky; top: var(--sp-4); }
+.cal-budget {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.cal-budget[data-tight="true"] {
+  border-color: color-mix(in oklab, var(--warning) 45%, transparent);
+  background: color-mix(in oklab, var(--warning) 8%, var(--surface));
+}
+.cal-budget strong { display: block; font-size: var(--step-1); font-variant-numeric: tabular-nums; }
+.cal-budget-label { font-size: var(--step--1); color: var(--text-muted); }
+
+.cal-sub {
+  font-family: var(--font-body);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: var(--sp-2);
+}
+.cal-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cal-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.cal-list li:last-child { border-bottom: none; }
+.cal-list li[data-free="true"] { opacity: 0.6; }
+.cal-time { font-size: var(--step--1); color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cal-ev { min-width: 0; font-weight: 600; }
+.cal-ev .cell-sub { font-weight: 400; max-width: none; }
+.cal-len { font-size: var(--step--1); color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Below the fold the month geometry stops paying for itself — the same data reads
+   better as a list, and the day panel moves above it since that's what gets used. */
+@media (max-width: 860px) {
+  .cal-layout { grid-template-columns: minmax(0, 1fr); }
+  .cal-day { position: static; order: -1; }
+  .cal-cell { min-height: 52px; }
+  .cal-budget { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .cal-card { padding: var(--sp-3); }
+  .cal-grid { gap: 2px; }
+  .cal-cell { min-height: 44px; padding: 2px 3px 3px; }
+  .cal-dot { width: 5px; height: 5px; }
+  .cal-legend { gap: var(--sp-3); }
+}
+
+/* --------------------------------------------------------------- dropzone */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-5) var(--sp-4);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.dropzone:hover, .dropzone:focus-visible { border-color: var(--progress); }
+.dropzone[data-over="true"] {
+  border-color: var(--progress);
+  background: color-mix(in oklab, var(--progress) 10%, var(--surface));
 }

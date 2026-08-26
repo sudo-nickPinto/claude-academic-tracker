@@ -1,8 +1,8 @@
 # Semester Tracker
 
 A static web app that replaces `Course_Tracker.xlsx` — four course task lists, a personal list, a
-dashboard, analytics, a grade calculator, and read-only reference tabs for the CS440 groups and the
-CS440 / CS360 class schedules.
+dashboard, a calendar that reads your Outlook export, analytics, a grade calculator, and read-only
+reference tabs for the CS440 groups and the CS440 / CS360 class schedules.
 
 No backend, no accounts, no build step. Plain HTML, CSS, and ES modules. Everything you type lives
 in your browser's `localStorage`; JSON export/import is the backup and the way to move to another
@@ -84,6 +84,43 @@ semester.
 
 **Groups** and the two **Schedule** tabs are read-only reference, copied from the syllabi.
 
+### Calendar and committed time
+
+**Settings → Outlook calendar** takes an `.ics` file exported from Outlook. Imported events stay
+events — nothing becomes a task. What they add is **committed time**: hours already spoken for, so
+the forecast can say "6h of work due, 5h of that day is class, 1h free" instead of just "6h due."
+
+Exporting from Outlook:
+
+- **Outlook on the web** — Calendar → *Settings ⚙ → Calendar → Shared calendars* → under *Publish a
+  calendar* pick your calendar, choose *Can view all details*, publish, then open the `.ics` link
+  and save the file.
+- **Outlook for Windows** — *File → Save Calendar*, set *More Options* to the whole term and
+  *Full details*, save as iCalendar.
+- **Outlook for Mac** — *File → Export → Export Calendar*.
+
+The app can't subscribe to a published calendar URL directly. Those endpoints send no
+`Access-Control-Allow-Origin` header, so a browser refuses to let a page on another domain fetch
+them, and the only workarounds are a proxy server or a Microsoft app registration — a backend and an
+account, both of which this app deliberately doesn't have. A saved file keeps everything local.
+
+What the import does and doesn't keep:
+
+| | |
+| --- | --- |
+| Recurring events | Expanded — one weekly class becomes each of its meetings. `EXDATE` (fall break) and single moved meetings are honored. |
+| Outside the term | Skipped. The term window is `2026-08-24 → 2026-12-07`. |
+| All-day events | Skipped. A birthday isn't five hours of committed time. |
+| Cancelled | Skipped. |
+| Shown as *Free* | Kept and listed, but costs no committed time. |
+| Time zones | A `Z`-suffixed UTC time is converted; anything else is read as local wall-clock time. |
+
+The import screen reports exactly what it kept and what it skipped, by category. Re-importing the
+same file changes nothing, and **Remove calendar** puts every number back where it was.
+
+**Calendar** (the tab) is a month grid: a dot per deadline, a density bar for how much of the day is
+already committed. Click a day for its events, its deadlines, and what's left of it.
+
 ### Two computed columns
 
 ```
@@ -94,6 +131,22 @@ Start By  = due − max(1, ⌈est. minutes ÷ 90⌉) days
 `Start By` assumes about 90 focused minutes a day. A three-hour assignment therefore wants two days,
 not one evening. When today reaches a task's Start By date and it hasn't been started, it shows up
 in *should already be started* on the dashboard.
+
+That formula is the workbook's, and it stays the workbook's — `tools/tests/compute.test.mjs` and the
+migration check assert it against Excel's own cached values. Once a calendar is loaded, a second
+*advisory* date appears under Start By when the two disagree: the same backward walk, but skipping
+over days already full of class. It never moves the date later, and never suggests one in the past.
+
+### Making everything fit
+
+Tables fold rather than scroll. As a table's own container narrows, the lowest-value columns drop out
+in a fixed order — Start By and Est. first, then Type, then Priority — and their values reappear as
+sub-lines under the task name, so nothing is ever lost, only moved. Below about 620px of table width
+each row becomes a card with its column headings inline.
+
+The folding is driven by CSS container queries on each `.table-wrap`, not by the viewport: the
+dashboard's week list lives in a narrow column while a course table gets the whole page, so on the
+same screen they need to fold at different points.
 
 ### What the colors mean
 
@@ -133,6 +186,23 @@ git history; type them into the running app if you want them, where they stay in
 - **Grades were empty.** No course had any graded items entered, so the calculator ships with the
   structure and the math but no data.
 
+## Tests
+
+All four run against the working tree; the last two need a local server on port 8347 and
+Playwright's chromium.
+
+```bash
+python3 -m http.server 8347 &          # for the two browser suites
+
+node tools/tests/compute.test.mjs      # pure logic: dates, Start By, Active/Later, grades, committed time
+node tools/tests/ical.test.mjs         # the .ics reader, against a synthetic Outlook export
+node tools/tests/layout.test.mjs       # zero horizontal overflow, 13 routes x 7 widths
+node tools/tests/smoke.test.mjs        # the real app in a real browser, including a calendar import
+```
+
+`layout.test.mjs` is the gate that keeps the tables honest: it fails if the page — or any table
+inside its card — is even one pixel wider than the box holding it, at any width from 360px up.
+
 ## Layout
 
 ```
@@ -144,10 +214,12 @@ js/store.js              persistence seam — the only module that knows about l
 js/config.js             dropdown vocabularies, course colors, constants
 js/compute.js            all derived logic; pure functions over plain state
 js/charts.js             hand-rolled SVG bar and donut charts
+js/ical.js               RFC 5545 reader — unfolding, RRULE/EXDATE expansion, no DOM
 js/seed.js               GENERATED — tasks and grade shells
 js/reference.js          GENERATED — groups roster and both schedules
 js/views/*.js            one module per view
 tools/parse_workbook.py  the migration script
+tools/tests/             the four test suites and the .ics fixture
 ```
 
 Routing is hash-based (`#/dashboard`, `#/course/CS440`), which needs no server rewrite rules and no

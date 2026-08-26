@@ -67,7 +67,7 @@ export const seedTasks = {
       "id": "2c1d2b5c-d667-50d1-b8e5-a9e5f9feb222",
       "seq": 5,
       "task": "Facilitate class: Software Lifecycle, Working with Users",
-      "details": "You're facilitating with Group 1 (Heidi, Marie, Soikat, Nick). Reading: slide set 5; SE text ch. 2a, 4.",
+      "details": "You're facilitating with Group 1 (H., M., S., Nick). Reading: slide set 5; SE text ch. 2a, 4.",
       "type": "Project",
       "priority": "High",
       "status": "Not Started",

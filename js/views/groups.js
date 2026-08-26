@@ -30,8 +30,8 @@ export function renderGroups(outlet) {
           <tr data-mine="${g.mine}">
             <td class="nowrap"><span class="cell-main">${esc(g.group)}</span>
               ${g.mine ? '<span class="star" title="You are in this group">★</span>' : ""}</td>
-            <td>${g.members.map((m) => `<span class="tag">${esc(m)}</span>`).join(" ")}</td>
-            <td class="muted small">${esc(g.facilitates) || "—"}</td>
+            <td data-label="Members">${g.members.map((m) => `<span class="tag">${esc(m)}</span>`).join(" ")}</td>
+            <td class="muted small" data-label="Facilitates">${esc(g.facilitates) || "—"}</td>
           </tr>`).join("")}
         </tbody>
       </table>

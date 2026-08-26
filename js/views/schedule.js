@@ -42,22 +42,25 @@ function cs440(id) {
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th class="num">Wk</th><th class="num">Date</th><th>Day</th><th>Topic</th>
-            <th class="num">Slides</th><th class="num">SE text</th><th>Facilitators</th><th>Due</th></tr>
+          <tr><th class="num" data-col="t3">Wk</th><th class="num">Date</th><th data-col="t2">Day</th><th>Topic</th>
+            <th class="num" data-col="t1">Slides</th><th class="num" data-col="t1">SE text</th>
+            <th data-col="t2">Facilitators</th><th>Due</th></tr>
         </thead>
         <tbody>
           ${rows.map((r, i) => `
           <tr data-mine="${r.mine}" ${i === next ? 'id="next-class"' : ""}>
-            <td class="num">${esc(r.wk)}</td>
-            <td class="num nowrap">${fmtDate(r.date)}${i === next ? ' <span class="tag">next</span>' : ""}</td>
-            <td>${esc(r.day)}</td>
-            <td><span class="cell-main">${r.mine ? '<span class="star">★</span> ' : ""}${esc(r.topic)}</span></td>
-            <td class="num">${esc(r.reading) || "—"}</td>
-            <td class="num">${esc(r.seText) || "—"}</td>
-            <td class="nowrap">${r.facilitators
+            <td class="num" data-col="t3" data-label="Week">${esc(r.wk)}</td>
+            <td class="num nowrap" data-label="Date">${fmtDate(r.date)}${i === next ? ' <span class="tag">next</span>' : ""}</td>
+            <td data-col="t2" data-label="Day">${esc(r.day)}</td>
+            <td data-cell="main"><span class="cell-main">${r.mine ? '<span class="star">★</span> ' : ""}${esc(r.topic)}</span>
+              ${r.reading || r.seText ? `<span class="cell-fold" data-when="t1">Slides ${esc(r.reading) || "—"} · SE text ${esc(r.seText) || "—"}</span>` : ""}
+              <span class="cell-fold" data-when="t2">${esc(r.day)}${r.facilitators ? ` · ${esc(r.facilitators)}` : ""}</span></td>
+            <td class="num" data-col="t1" data-label="Slides">${esc(r.reading) || "—"}</td>
+            <td class="num" data-col="t1" data-label="SE text">${esc(r.seText) || "—"}</td>
+            <td class="nowrap" data-col="t2" data-label="Facilitators">${r.facilitators
               ? `<span class="${myGroups.includes(r.facilitators) ? "star" : ""}">${esc(r.facilitators)}</span>`
               : '<span class="faint">—</span>'}</td>
-            <td class="muted small">${esc(r.due) || ""}</td>
+            <td class="muted small" data-label="Due">${esc(r.due) || ""}</td>
           </tr>`).join("")}
         </tbody>
       </table>
@@ -78,7 +81,8 @@ function cs360(id) {
 
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">Wk</th><th class="num">Date</th><th>Topic</th><th class="num">Reading</th><th>Due</th></tr></thead>
+        <thead><tr><th class="num" data-col="t3">Wk</th><th class="num">Date</th><th>Topic</th>
+            <th class="num" data-col="t1">Reading</th><th>Due</th></tr></thead>
         <tbody>
           ${rows.map((r, i) => `
           <tr ${i === next ? 'data-mine="true"' : ""}>
@@ -86,7 +90,7 @@ function cs360(id) {
             <td class="num nowrap">${weekday(r.date)} ${fmtDate(r.date)}${i === next ? ' <span class="tag">next</span>' : ""}</td>
             <td><span class="cell-main">${esc(r.topic)}</span></td>
             <td class="num">${esc(r.reading) || "—"}</td>
-            <td class="muted small">${esc(r.due) || ""}</td>
+            <td class="muted small" data-label="Due">${esc(r.due) || ""}</td>
           </tr>`).join("")}
         </tbody>
       </table>

@@ -28,7 +28,7 @@ export function renderGrades(outlet) {
       <div class="table-wrap">
         <table>
           <thead><tr><th>Course</th><th class="num">Current</th><th class="num">Target</th>
-            <th class="num">Weight graded</th><th class="num">Need on everything left</th></tr></thead>
+            <th class="num" data-col="t1">Weight graded</th><th class="num">Need on everything left</th></tr></thead>
           <tbody data-all>${allCoursesRows(summaries)}</tbody>
         </table>
       </div>
@@ -56,10 +56,10 @@ function allCoursesRows(summaries) {
       <tr>
         <td class="nowrap"><span class="chip" style="--accent:var(--c-${id})">${esc(id)}</span>
           <span class="cell-sub">${esc(courses[id].name)}</span></td>
-        <td class="num">${g.currentGrade === null ? '<span class="faint">—</span>' : fmtPct(g.currentGrade)}</td>
-        <td class="num">${fmtPct(g.target)}</td>
-        <td class="num">${fmtPct(g.gradedWeight)}</td>
-        <td class="num">${needCell(g)}</td>
+        <td class="num" data-label="Current">${g.currentGrade === null ? '<span class="faint">—</span>' : fmtPct(g.currentGrade)}</td>
+        <td class="num" data-label="Target">${fmtPct(g.target)}</td>
+        <td class="num" data-col="t1" data-label="Weight graded">${fmtPct(g.gradedWeight)}</td>
+        <td class="num" data-label="Need left">${needCell(g)}</td>
       </tr>`;
   }).join("");
 }
@@ -109,17 +109,17 @@ function courseBlock(id, entry, g) {
       <div class="table-wrap">
         <table>
           <thead><tr><th>Graded item</th><th class="num" style="width:110px">Weight %</th>
-            <th class="num" style="width:110px">Score %</th><th class="num">Points earned</th>
-            <th>Status</th><th style="width:44px"></th></tr></thead>
+            <th class="num" style="width:110px">Score %</th><th class="num" data-col="t1">Points earned</th>
+            <th data-col="t2">Status</th><th style="width:44px"></th></tr></thead>
           <tbody>
             ${items.map((item, i) => `
             <tr data-row="${i}">
-              <td><input type="text" data-f="item" value="${esc(item.item ?? "")}" placeholder="Midterm, Final, Homework…"></td>
-              <td><input type="number" class="num" data-f="weight" min="0" max="100" step="0.5" value="${toPct(item.weight)}"></td>
-              <td><input type="number" class="num" data-f="score" min="0" max="150" step="0.5" value="${toPct(item.score)}" placeholder="—"></td>
-              <td class="num" data-pts>${ptsCell(item)}</td>
-              <td data-st>${statusCell(item)}</td>
-              <td><button class="btn btn-ghost btn-sm" data-del="${i}" type="button" aria-label="Delete row">✕</button></td>
+              <td data-cell="main"><input type="text" data-f="item" value="${esc(item.item ?? "")}" placeholder="Midterm, Final, Homework…"></td>
+              <td data-label="Weight %"><input type="number" class="num" data-f="weight" min="0" max="100" step="0.5" value="${toPct(item.weight)}"></td>
+              <td data-label="Score %"><input type="number" class="num" data-f="score" min="0" max="150" step="0.5" value="${toPct(item.score)}" placeholder="—"></td>
+              <td class="num" data-pts data-col="t1" data-label="Points">${ptsCell(item)}</td>
+              <td data-st data-col="t2" data-label="Status">${statusCell(item)}</td>
+              <td data-cell="act"><button class="btn btn-ghost btn-sm" data-del="${i}" type="button" aria-label="Delete row">✕</button></td>
             </tr>`).join("")}
           </tbody>
         </table>

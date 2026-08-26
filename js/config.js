@@ -15,6 +15,14 @@ export const priorityRank = { High: 0, Medium: 1, Low: 2 };
 /** Focused minutes assumed per day when working backward from a due date. */
 export const dailyCapacityMin = 90;
 
+/**
+ * The length of a usable working day in minutes — the pool that class time and
+ * coursework both come out of. Deliberately not 24 hours: the number is only useful
+ * if it's a budget you could actually spend. Distinct from dailyCapacityMin, which
+ * is the workbook's assumption about *focused* work and stays at 90.
+ */
+export const workingDayMin = 8 * 60;
+
 /** Hours of work on a single day that make it a "heavy day" on the 14-day chart. */
 export const heavyDayHours = 4;
 
@@ -24,6 +32,14 @@ export const heavyDayHours = 4;
  * for that split; Settings writes an override to prefs.horizonDays.
  */
 export const horizonDays = 21;
+
+/**
+ * The term's bounds. An Outlook export carries a whole year of life — summer shifts,
+ * winter flights — and only what falls inside the term is committed time that
+ * competes with coursework. Derived from the CS440/CS360 schedule range in
+ * reference.js, not invented; Settings writes an override to prefs.semester.
+ */
+export const semester = { start: "2026-08-24", end: "2026-12-07" };
 
 export const courseIds = ["CS440", "CS391", "CS360", "ENG216"];
 

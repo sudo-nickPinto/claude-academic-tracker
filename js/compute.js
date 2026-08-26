@@ -9,7 +9,7 @@
 
 import {
   courseIds, majorTypes, priorities, priorityRank, statuses,
-  dailyCapacityMin, heavyDayHours, horizonDays,
+  dailyCapacityMin, workingDayMin, heavyDayHours, horizonDays, semester,
 } from "./config.js";
 
 const MS_PER_DAY = 86400000;
@@ -120,6 +120,83 @@ export function courseTasks(state) {
     state.tasks[id].filter(isNamed).map((t) => ({ ...t, course: id })));
 }
 
+
+// ------------------------------------------------------------------- calendar
+
+/**
+ * Committed time, in minutes, on one date — imported calendar events that are
+ * actually busy. Events marked "free" in Outlook are on the calendar but don't
+ * compete with coursework, so they don't count here.
+ */
+export function busyMinutes(state, date) {
+  const events = state?.calendar?.events;
+  if (!Array.isArray(events)) return 0;
+  return events.reduce((sum, e) => (e.date === date && e.busy ? sum + (e.minutes || 0) : sum), 0);
+}
+
+/** { 'YYYY-MM-DD': minutes } for every day with committed time. One pass. */
+export function committedByDate(state) {
+  const out = {};
+  for (const e of state?.calendar?.events || []) {
+    if (!e.busy) continue;
+    out[e.date] = (out[e.date] || 0) + (e.minutes || 0);
+  }
+  return out;
+}
+
+export const eventsOn = (state, date) =>
+  (state?.calendar?.events || [])
+    .filter((e) => e.date === date)
+    .sort((a, b) => a.start - b.start);
+
+export const hasCalendar = (state) => Boolean(state?.calendar?.events?.length);
+
+export const semesterWindow = (state) => ({ ...semester, ...(state?.prefs?.semester || {}) });
+
+/**
+ * Minutes actually available for coursework on a date: the daily capacity less
+ * whatever the calendar has already spoken for, floored at zero.
+ */
+/**
+ * Minutes of coursework a day can absorb: the workbook's focused-work assumption,
+ * but never more than what the calendar has left of the working day. With no
+ * calendar loaded this is exactly dailyCapacityMin, which is what keeps
+ * realisticStart() identical to startBy() until an import actually says otherwise.
+ */
+export function freeCapacity(state, date) {
+  return Math.max(0, Math.min(dailyCapacityMin, workingDayMin - busyMinutes(state, date)));
+}
+
+/** Hours of the working day the calendar hasn't already claimed. */
+export function freeHours(state, date) {
+  return Math.max(0, workingDayMin - busyMinutes(state, date)) / 60;
+}
+
+/**
+ * An advisory start date that walks backward from the due date skipping days the
+ * calendar has already filled, so a task needing three sessions doesn't nominally
+ * "start" on a day with back-to-back classes.
+ *
+ * `startBy()` is deliberately NOT this. That formula mirrors the workbook and is
+ * asserted against Excel's own cached values; it has to stay stable and
+ * explainable. This is the second opinion, shown only once a calendar is loaded.
+ */
+export function realisticStart(task, state, ref = today()) {
+  const plain = startBy(task);
+  if (!plain || !hasCalendar(state)) return plain;
+
+  let remaining = task.estMin;
+  let date = task.due;
+  // A term's worth of days is a generous bound; the loop exits on the work running out.
+  for (let i = 0; i < 240 && remaining > 0; i++) {
+    date = addDays(date, -1);
+    remaining -= freeCapacity(state, date);
+  }
+  // Never advise a date later than the plain rule, and never one already past.
+  const advised = date < plain ? date : plain;
+  return advised < ref ? plain : advised;
+}
+
 const hours = (tasks) => tasks.reduce((sum, t) => sum + (t.estMin || 0), 0) / 60;
 
 function dueWithin(task, ref, days) {
@@ -226,7 +303,16 @@ export function workload14(state, ref = today()) {
     const date = addDays(ref, i);
     const due = open.filter((t) => t.due === date);
     const h = hours(due);
-    return { date, offset: i, count: due.length, hours: h, heavy: h >= heavyDayHours };
+    const committed = busyMinutes(state, date) / 60;
+    const free = freeHours(state, date);
+    return {
+      date, offset: i, count: due.length, hours: h, heavy: h >= heavyDayHours,
+      committed,
+      // Hours left for coursework once the calendar has taken its share.
+      free,
+      // More work due than there are hours left to do it in — the real crunch signal.
+      overbooked: h > 0 && h > free,
+    };
   });
 }
 

@@ -58,16 +58,16 @@ export function renderAnalytics(outlet) {
         <div class="card-head"><h2>Due-date outlook</h2><span class="hint">Open tasks only</span></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Window</th><th class="num">Tasks</th><th class="num">Hours</th><th style="min-width:110px"></th></tr></thead>
+            <thead><tr><th>Window</th><th class="num">Tasks</th><th class="num">Hours</th><th style="min-width:110px" data-col="t1"></th></tr></thead>
             <tbody>
               ${a.outlook.map((b) => {
                 const max = Math.max(1, ...a.outlook.map((x) => x.count));
                 return `
                 <tr>
                   <td class="nowrap"><span class="chip" style="--accent:${OUTLOOK_COLORS[b.key]}">${esc(b.key)}</span></td>
-                  <td class="num">${b.count}</td>
-                  <td class="num">${fmtHours(b.hours)}</td>
-                  <td>${bar(b.count / max, `style="--accent:${OUTLOOK_COLORS[b.key]}"`)}</td>
+                  <td class="num" data-label="Tasks">${b.count}</td>
+                  <td class="num" data-label="Hours">${fmtHours(b.hours)}</td>
+                  <td data-col="t1">${bar(b.count / max, `style="--accent:${OUTLOOK_COLORS[b.key]}"`)}</td>
                 </tr>`;
               }).join("")}
             </tbody>
@@ -126,7 +126,7 @@ function tableBody(rows, label, withHours) {
   <table>
     <thead>
       <tr><th>${esc(label)}</th><th class="num">Open</th><th class="num">Done</th>
-        <th class="num">Overdue</th>${withHours ? '<th class="num">Est. hrs open</th>' : ""}</tr>
+        <th class="num">Overdue</th>${withHours ? '<th class="num" data-col="t1">Est. hrs open</th>' : ""}</tr>
     </thead>
     <tbody>
       ${rows.map((r) => `
@@ -134,10 +134,10 @@ function tableBody(rows, label, withHours) {
         <td class="nowrap">${label === "Course"
           ? `<span class="chip" style="--accent:var(--c-${r.key})">${esc(r.key)}</span>`
           : esc(r.key)}</td>
-        <td class="num">${r.open}</td>
-        <td class="num">${r.done}</td>
-        <td class="num ${r.overdue ? "days-left" : ""}" data-neg="${r.overdue > 0}">${r.overdue}</td>
-        ${withHours ? `<td class="num">${fmtHours(r.estHours)}</td>` : ""}
+        <td class="num" data-label="Open">${r.open}</td>
+        <td class="num" data-label="Done">${r.done}</td>
+        <td class="num ${r.overdue ? "days-left" : ""}" data-neg="${r.overdue > 0}" data-label="Overdue">${r.overdue}</td>
+        ${withHours ? `<td class="num" data-col="t1" data-label="Est. hrs">${fmtHours(r.estHours)}</td>` : ""}
       </tr>`).join("")}
     </tbody>
   </table>`;

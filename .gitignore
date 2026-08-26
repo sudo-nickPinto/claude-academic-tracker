@@ -1,1 +1,4 @@
 .DS_Store
+
+# Screenshots written by tools/tests/smoke.test.mjs
+tools/tests/shots/
