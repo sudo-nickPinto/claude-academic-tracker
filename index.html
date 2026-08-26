@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semester Tracker</title>
+<meta name="description" content="Coursework, deadlines, workload and grades for the semester.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="scrim" data-nav-close></div>
+
+  <aside class="sidebar">
+    <div class="brand">Semester Tracker<small>Fall 2026</small></div>
+
+    <nav class="nav-group" id="nav-main" aria-label="Main"></nav>
+    <nav class="nav-group" id="nav-courses" aria-label="Courses"></nav>
+    <nav class="nav-group" id="nav-reference" aria-label="Reference"></nav>
+
+    <div class="nav-group" style="margin-top:auto">
+      <button class="nav-link" id="open-help" type="button">
+        <span class="nav-dot" style="--accent:var(--text-faint)"></span> Help &amp; legend
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <button class="menu-toggle" type="button" data-nav-open>☰ Menu</button>
+    <div id="outlet" class="view"></div>
+  </main>
+</div>
+
+<dialog id="task-dialog"></dialog>
+
+<dialog id="help-dialog">
+  <div class="dialog-head">
+    <h2>How this tracker works</h2>
+    <button class="btn btn-ghost btn-sm" data-close type="button">Close</button>
+  </div>
+  <div class="dialog-body help-body">
+    <h3>The views</h3>
+    <dl>
+      <dt>Dashboard</dt><dd>Read-only. What is overdue, what lands in the next seven days ranked by date then priority, per-course progress, and a fourteen-day workload forecast.</dd>
+      <dt>CS440 · CS391 · CS360 · ENG216</dt><dd>One view per class, colour-coded. This is where you actually add, edit and complete work.</dd>
+      <dt>Personal</dt><dd>Anything that is not coursework. Five fields, deliberately simple. Kept out of every Dashboard and Analytics number.</dd>
+      <dt>Grades</dt><dd>Weights and scores per course, your current grade, and what you would need to average on everything left.</dd>
+      <dt>Analytics</dt><dd>Cross-course roll-up: outlook, priority, status and type of work.</dd>
+      <dt>Groups &amp; Schedules</dt><dd>Reference only. Your CS440 project groups and both tentative class schedules.</dd>
+    </dl>
+
+    <h3>Fields you fill in</h3>
+    <dl>
+      <dt>Task</dt><dd>Short name. A task with no name is not counted anywhere.</dd>
+      <dt>Details / What's Required</dt><dd>The full description: what the assignment asks for, what to hand in.</dd>
+      <dt>Type</dt><dd>Reading, Problem Set, Lab, Exam / Quiz and so on. Exam, Paper and Project also count as milestones for “Next big one”.</dd>
+      <dt>Priority &amp; Status</dt><dd>Dropdowns. Status flipping to Done stamps the completion date automatically, and clears it if you flip back.</dd>
+      <dt>Due Date</dt><dd>Everything time-based keys off this.</dd>
+      <dt>Est. Min</dt><dd>Rough minutes. Drives the workload hours and the Start By date.</dd>
+    </dl>
+
+    <h3>Columns that calculate themselves</h3>
+    <dl>
+      <dt>Days Left</dt><dd>Due date minus today. Negative means overdue. Blank once the task is done.</dd>
+      <dt>Start By</dt><dd>Working backward from the due date at about 90 focused minutes a day. It turns amber once that day has arrived and the task still isn't done.</dd>
+    </dl>
+
+    <h3>What the colours mean</h3>
+    <dl>
+      <dt><span class="pill" data-v="Overdue">Red row</span></dt><dd>Overdue and not done.</dd>
+      <dt><span class="pill" data-v="Medium">Amber row</span></dt><dd>Due within three days.</dd>
+      <dt><span class="pill" data-v="Done">Faded, struck through</span></dt><dd>Done. Left in place so your completion stats stay honest.</dd>
+    </dl>
+    <p class="small muted" style="margin-top:var(--sp-3)">Course colours identify the class and never carry urgency; the pills and row stripes carry urgency and never identify a class.</p>
+
+    <h3>Good habits</h3>
+    <dl>
+      <dt>Put an estimate on everything</dt><dd>Est. Min is what makes Start By, the workload chart and the hours numbers work at all.</dd>
+      <dt>Fill in Grades at the start of term</dt><dd>Ten minutes with four syllabi, and the “what do I need on the final” answer is there all semester.</dd>
+      <dt>Export now and then</dt><dd>Data lives in this browser only. Settings → Export JSON is your backup.</dd>
+    </dl>
+  </div>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

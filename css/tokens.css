@@ -1,0 +1,116 @@
+/* Design tokens. Light is defined on bare :root; only tokens are redefined per theme,
+   so no color has its sole definition inside a media query. */
+
+:root {
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-body: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.83rem);
+  --step-0: clamp(0.9rem, 0.87rem + 0.15vw, 0.97rem);
+  --step-1: clamp(1.06rem, 1rem + 0.3vw, 1.2rem);
+  --step-2: clamp(1.3rem, 1.2rem + 0.5vw, 1.6rem);
+  --step-3: clamp(1.7rem, 1.5rem + 1vw, 2.3rem);
+  --step-4: clamp(2.1rem, 1.7rem + 2vw, 3.1rem);
+
+  --sp-1: 0.25rem;  --sp-2: 0.5rem;   --sp-3: 0.75rem;
+  --sp-4: 1rem;     --sp-5: 1.5rem;   --sp-6: 2rem;    --sp-7: 3rem;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+
+  --bg: #F6F6F3;
+  --surface: #FFFFFF;
+  --surface-2: #F0F0EC;
+  --surface-3: #E7E7E1;
+  --border: #E0E0D9;
+  --border-strong: #C9C9C0;
+  --text: #191917;
+  --text-muted: #6A6A63;
+  --text-faint: #93938B;
+
+  /* Semantic colors are all high-chroma; course accents (below) are all muted.
+     That contrast is what keeps urgency legible next to course identity. */
+  --danger: #D92D20;
+  --warning: #F59E0B;
+  --success: #12805C;
+  --progress: #2563EB;
+  --blocked: #7C3AED;
+
+  --c-CS440: #3B5BA5;
+  --c-CS391: #1F7A6C;
+  --c-CS360: #B26A16;
+  --c-ENG216: #8E3B4E;
+  --c-Personal: #6E7A8A;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.14);
+
+  --ring: 0 0 0 3px color-mix(in oklab, var(--progress) 35%, transparent);
+}
+
+:root:not([data-theme="light"]) {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+
+/* Dark palette, applied both by system preference and by explicit toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121214;
+    --surface: #1A1A1D;
+    --surface-2: #222227;
+    --surface-3: #2C2C32;
+    --border: #303038;
+    --border-strong: #45454F;
+    --text: #ECECE8;
+    --text-muted: #9C9C96;
+    --text-faint: #75756F;
+
+    --danger: #FF7B72;
+    --warning: #FBBF24;
+    --success: #3FCF8E;
+    --progress: #60A5FA;
+    --blocked: #A78BFA;
+
+    --c-CS440: #8FA9E0;
+    --c-CS391: #5FC9B6;
+    --c-CS360: #E0A863;
+    --c-ENG216: #D98A9C;
+    --c-Personal: #A3AEBD;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121214;
+  --surface: #1A1A1D;
+  --surface-2: #222227;
+  --surface-3: #2C2C32;
+  --border: #303038;
+  --border-strong: #45454F;
+  --text: #ECECE8;
+  --text-muted: #9C9C96;
+  --text-faint: #75756F;
+
+  --danger: #FF7B72;
+  --warning: #FBBF24;
+  --success: #3FCF8E;
+  --progress: #60A5FA;
+  --blocked: #A78BFA;
+
+  --c-CS440: #8FA9E0;
+  --c-CS391: #5FC9B6;
+  --c-CS360: #E0A863;
+  --c-ENG216: #D98A9C;
+  --c-Personal: #A3AEBD;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.6);
+}
