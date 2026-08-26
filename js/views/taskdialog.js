@@ -1,9 +1,9 @@
 /** The add/edit form, shared by the course views and Personal. */
 
 import { taskTypes, priorities, statuses } from "../config.js";
-import { update, nextSeq } from "../store.js";
-import { today } from "../compute.js";
-import { esc, openDialog, meta } from "../ui.js";
+import { update, nextSeq, load } from "../store.js";
+import { today, surfacesOn, isLater, horizonOf } from "../compute.js";
+import { esc, openDialog, meta, fmtDate } from "../ui.js";
 
 const dialog = () => document.getElementById("task-dialog");
 
@@ -12,7 +12,27 @@ const options = (values, selected) =>
 
 function blank(isPersonal) {
   const base = { task: "", notes: "", due: "", priority: "Medium", status: "Not Started" };
-  return isPersonal ? base : { ...base, details: "", type: "Assignment", estMin: "", source: "" };
+  return isPersonal
+    ? base
+    : { ...base, details: "", type: "Assignment", estMin: "", source: "", activeFrom: null };
+}
+
+/**
+ * Explains when this task joins the active list, and why. Written out in words because
+ * the rule (earlier of the horizon and Start By) is not something to make anyone rederive.
+ */
+function timingNote(task, ref, horizon) {
+  if (!task.due && !task.activeFrom) return "No due date, so this stays in the active list.";
+  const surfaces = surfacesOn(task, horizon);
+  if (!surfaces) return "This stays in the active list.";
+  if (task.activeFrom) {
+    return surfaces > ref
+      ? `Pushed back by you — surfaces ${fmtDate(surfaces)}.`
+      : `You surfaced this on ${fmtDate(surfaces)}.`;
+  }
+  return surfaces > ref
+    ? `Automatic — surfaces ${fmtDate(surfaces)}, ${horizon} days before it's due (or on its start-by date, whichever is first).`
+    : "Active now.";
 }
 
 /**
@@ -24,6 +44,8 @@ export function openTaskDialog(listKey, existing, onSaved) {
   const task = existing || blank(isPersonal);
   const info = meta(listKey);
   const el = dialog();
+  const ref = today();
+  const horizon = horizonOf(load());
 
   el.style.cssText = `--accent: var(--c-${listKey})`;
   el.innerHTML = `
@@ -87,6 +109,18 @@ export function openTaskDialog(listKey, existing, onSaved) {
             <textarea id="f-notes" name="notes">${esc(task.notes)}</textarea>
           </div>`}
         </div>
+
+        ${isPersonal ? "" : `
+        <fieldset class="timing">
+          <legend>Timing</legend>
+          <p class="small" id="timing-note">${esc(timingNote(task, ref, horizon))}</p>
+          <div class="timing-row">
+            <button class="btn btn-sm" type="button" id="f-surface">Surface now</button>
+            <label class="small" for="f-active-from">or keep it out of the way until</label>
+            <input id="f-active-from" name="activeFrom" type="date" value="${esc(task.activeFrom || "")}">
+            <button class="btn btn-ghost btn-sm" type="button" id="f-auto">Automatic</button>
+          </div>
+        </fieldset>`}
       </div>
 
       <div class="dialog-foot">
@@ -98,6 +132,33 @@ export function openTaskDialog(listKey, existing, onSaved) {
     </form>`;
 
   const form = el.querySelector("#task-form");
+  const activeFrom = el.querySelector("#f-active-from");
+
+  // The timing controls only ever write into the date field; commit() reads it once
+  // on save, so nothing is persisted until the user actually saves the form.
+  el.querySelector("#f-surface")?.addEventListener("click", () => {
+    activeFrom.value = ref;
+    refreshTimingNote();
+  });
+  el.querySelector("#f-auto")?.addEventListener("click", () => {
+    activeFrom.value = "";
+    refreshTimingNote();
+  });
+  activeFrom?.addEventListener("change", refreshTimingNote);
+  el.querySelector("#f-due")?.addEventListener("change", refreshTimingNote);
+  el.querySelector("#f-est")?.addEventListener("change", refreshTimingNote);
+
+  function refreshTimingNote() {
+    const note = el.querySelector("#timing-note");
+    if (!note) return;
+    const data = Object.fromEntries(new FormData(form));
+    note.textContent = timingNote({
+      due: data.due || null,
+      estMin: data.estMin === "" ? null : Number(data.estMin),
+      status: data.status,
+      activeFrom: data.activeFrom || null,
+    }, ref, horizon);
+  }
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -141,6 +202,7 @@ function commit(listKey, existing, data, isPersonal) {
         type: data.type,
         estMin: data.estMin === "" ? null : Number(data.estMin),
         source: (data.source || "").trim(),
+        activeFrom: data.activeFrom || null,
       });
     }
 
@@ -159,6 +221,15 @@ function commit(listKey, existing, data, isPersonal) {
         completed: fields.status === "Done" ? now : null,
       });
     }
+  });
+}
+
+/** Fast path for the Surface button on a Later row. */
+export function surfaceNow(listKey, id) {
+  const now = today();
+  update((draft) => {
+    const task = draft.tasks[listKey]?.find((t) => t.id === id);
+    if (task) task.activeFrom = now;
   });
 }
 

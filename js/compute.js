@@ -9,7 +9,7 @@
 
 import {
   courseIds, majorTypes, priorities, priorityRank, statuses,
-  dailyCapacityMin, heavyDayHours,
+  dailyCapacityMin, heavyDayHours, horizonDays,
 } from "./config.js";
 
 const MS_PER_DAY = 86400000;
@@ -70,6 +70,50 @@ export function shouldHaveStarted(task, ref = today()) {
   return start !== null && !isDone(task) && epochDay(start) <= epochDay(ref);
 }
 
+// --------------------------------------------------------------- active / later
+
+/**
+ * The day a task stops being "Later" and joins today's work.
+ *
+ * Whichever comes first: the horizon (due minus N days) or the task's own Start By.
+ * A big project's Start By can land inside the horizon, and when it does it wins —
+ * a 12-hour project should never be buried by the same rule that hides a 20-minute
+ * reading. Undated work has no horizon to sit behind, so it is always active.
+ */
+export function surfacesOn(task, horizon = horizonDays) {
+  if (task.activeFrom) return task.activeFrom;
+  if (!task.due) return null;
+  const edge = addDays(task.due, -horizon);
+  const start = startBy(task);
+  return start && start < edge ? start : edge;
+}
+
+/** Statuses that mean work has actually begun, which surfaces a task on its own. */
+const isUnderway = (t) => t.status === "In Progress" || t.status === "Waiting / Blocked";
+
+/**
+ * Later = real, editable, counted in the semester inventory, but not in today's list.
+ *
+ * The last two guards are what make Later safe to trust: anything overdue, and anything
+ * already being worked on, surfaces no matter what the dates say. Combined with
+ * surfacesOn taking Start By into account, nothing can go quietly past its start date.
+ */
+export function isLater(task, ref = today(), horizon = horizonDays) {
+  if (isDone(task) || isUnderway(task)) return false;
+  const left = daysLeft(task, ref);
+  if (left !== null && left < 0) return false;
+  const surfaces = surfacesOn(task, horizon);
+  return surfaces !== null && epochDay(surfaces) > epochDay(ref);
+}
+
+export function isActive(task, ref = today(), horizon = horizonDays) {
+  return !isDone(task) && !isLater(task, ref, horizon);
+}
+
+/** The horizon setting in effect, falling back to the built-in default. */
+export const horizonOf = (state) =>
+  typeof state?.prefs?.horizonDays === "number" ? state.prefs.horizonDays : horizonDays;
+
 /** Coursework only. Personal is deliberately excluded from every aggregate. */
 export function courseTasks(state) {
   return courseIds.flatMap((id) =>
@@ -86,13 +130,22 @@ function dueWithin(task, ref, days) {
 // ------------------------------------------------------------------ dashboard
 
 export function dashboardStats(state, ref = today()) {
+  const horizon = horizonOf(state);
   const all = courseTasks(state);
+  // `open` stays "not done" — the honest semester inventory, and what the workbook
+  // agrees with. Active and Later sit alongside it rather than redefining it.
   const open = all.filter((t) => !isDone(t));
+  const later = open.filter((t) => isLater(t, ref, horizon));
+  const active = open.filter((t) => !isLater(t, ref, horizon));
   const dueWeek = open.filter((t) => dueWithin(t, ref, 7));
   const done = all.filter(isDone);
 
   return {
     open: open.length,
+    active: active.length,
+    later: later.length,
+    activeHours: hours(active),
+    laterHours: hours(later),
     overdue: open.filter((t) => daysLeft(t, ref) < 0).length,
     dueWeek: dueWeek.length,
     hoursThisWeek: hours(dueWeek),
@@ -104,9 +157,11 @@ export function dashboardStats(state, ref = today()) {
 }
 
 export function perCourse(state, ref = today()) {
+  const horizon = horizonOf(state);
   return courseIds.map((id) => {
     const all = state.tasks[id].filter(isNamed);
     const open = all.filter((t) => !isDone(t));
+    const active = open.filter((t) => !isLater(t, ref, horizon));
     const major = open
       .filter((t) => majorTypes.includes(t.type) && t.due)
       .sort((a, b) => a.due.localeCompare(b.due))[0] || null;
@@ -116,6 +171,9 @@ export function perCourse(state, ref = today()) {
       total: all.length,
       done: all.length - open.length,
       open: open.length,
+      active: active.length,
+      later: open.length - active.length,
+      activeHours: hours(active),
       overdue: open.filter((t) => daysLeft(t, ref) < 0).length,
       dueWeek: open.filter((t) => dueWithin(t, ref, 7)).length,
       estHours: hours(open),
@@ -147,6 +205,21 @@ export function upcoming(state, { ref = today(), includePersonal = false } = {})
       a.seq - b.seq);
 }
 
+/**
+ * Everything sitting in Later, in the order it will surface. The point of showing this
+ * is that Later must never feel like a hole things fall into.
+ */
+export function horizonList(state, ref = today()) {
+  const horizon = horizonOf(state);
+  return courseTasks(state)
+    .filter((t) => isLater(t, ref, horizon))
+    .map((t) => ({ ...t, surfaces: surfacesOn(t, horizon) }))
+    .sort((a, b) =>
+      a.surfaces.localeCompare(b.surfaces) ||
+      (a.due || "").localeCompare(b.due || "") ||
+      a.seq - b.seq);
+}
+
 export function workload14(state, ref = today()) {
   const open = courseTasks(state).filter((t) => !isDone(t) && t.due);
   return Array.from({ length: 14 }, (_, i) => {
@@ -160,13 +233,18 @@ export function workload14(state, ref = today()) {
 // ------------------------------------------------------------------ analytics
 
 export function analytics(state, ref = today()) {
+  const horizon = horizonOf(state);
   const all = courseTasks(state);
   const open = all.filter((t) => !isDone(t));
+  const later = open.filter((t) => isLater(t, ref, horizon));
 
   return {
+    // Analytics counts the whole semester; the dashboard counts what's live today.
     snapshot: {
       total: all.length,
       open: open.length,
+      active: open.length - later.length,
+      later: later.length,
       completed: all.length - open.length,
       completion: all.length ? (all.length - open.length) / all.length : 0,
       overdue: open.filter((t) => daysLeft(t, ref) < 0).length,

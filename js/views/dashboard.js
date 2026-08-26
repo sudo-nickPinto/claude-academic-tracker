@@ -1,8 +1,8 @@
 import { courses } from "../config.js";
 import { load, update } from "../store.js";
 import {
-  today, dashboardStats, perCourse, upcoming, workload14,
-  daysLeft, startBy, shouldHaveStarted, rowState, analytics,
+  today, dashboardStats, perCourse, upcoming, workload14, horizonList,
+  daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf,
 } from "../compute.js";
 import {
   esc, fmtDate, fmtDateFull, fmtHours, fmtPct, pill, bar, daysLabel, weekday, emptyState,
@@ -17,6 +17,7 @@ export function renderDashboard(outlet) {
   const includePersonal = state.prefs.includePersonalInWeek;
   const week = upcoming(state, { ref, includePersonal });
   const days = workload14(state, ref);
+  const horizon = horizonList(state, ref);
 
   outlet.style.cssText = "";
   outlet.innerHTML = `
@@ -24,7 +25,7 @@ export function renderDashboard(outlet) {
       <div>
         <div class="eyebrow">Dashboard</div>
         <h1>Semester at a glance</h1>
-        <p>${esc(fmtDateFull(ref))} · everything here is calculated live from your course lists.</p>
+        <p>${esc(fmtDateFull(ref))} · what's live right now. Work more than ${horizonOf(state)} days out waits in Later.</p>
       </div>
     </header>
 
@@ -32,7 +33,7 @@ export function renderDashboard(outlet) {
 
     <section class="section split">
       ${weekCard(week, ref, includePersonal)}
-      ${sideColumn(days, state, ref)}
+      ${sideColumn(days, horizon, ref)}
     </section>
 
     <section class="section">
@@ -44,11 +45,11 @@ export function renderDashboard(outlet) {
     <section class="section">
       <div class="section-head"><h2>Where the work is</h2></div>
       <div class="chart-grid">
-        ${chartCard("Open tasks by course", barChartH(byCourse.map((c) => ({
-          label: c.course, value: c.open, color: `var(--c-${c.course})`,
+        ${chartCard("Active tasks by course", barChartH(byCourse.map((c) => ({
+          label: c.course, value: c.active, color: `var(--c-${c.course})`,
         }))))}
-        ${chartCard("Estimated hours of open work", barChartH(byCourse.map((c) => ({
-          label: c.course, value: Math.round(c.estHours * 10) / 10, color: `var(--c-${c.course})`,
+        ${chartCard("Estimated hours of active work", barChartH(byCourse.map((c) => ({
+          label: c.course, value: Math.round(c.activeHours * 10) / 10, color: `var(--c-${c.course})`,
         })), { format: (v) => `${fmtHours(v)}h` }))}
         ${chartCard("Status of all coursework", donut(statusRows(state), { centerLabel: "tasks" }))}
       </div>
@@ -64,8 +65,11 @@ export function renderDashboard(outlet) {
 function statGrid(s) {
   return `
   <div class="stat-grid">
-    <div class="stat"><span class="stat-label">Open tasks</span>
-      <span class="stat-value">${s.open}</span><span class="stat-sub">across four courses</span></div>
+    <div class="stat"><span class="stat-label">Active tasks</span>
+      <span class="stat-value">${s.active}</span>
+      <span class="stat-sub">of ${s.open} open · ${fmtHours(s.activeHours)}h</span></div>
+    <div class="stat"><span class="stat-label">Later</span>
+      <span class="stat-value">${s.later}</span><span class="stat-sub">surface automatically</span></div>
     <div class="stat" data-tone="danger"><span class="stat-label">Overdue</span>
       <span class="stat-value">${s.overdue}</span><span class="stat-sub">past due, not done</span></div>
     <div class="stat" data-tone="warning"><span class="stat-label">Due in 7 days</span>
@@ -127,7 +131,7 @@ function weekCard(week, ref, includePersonal) {
   </div>`;
 }
 
-function sideColumn(days, state, ref) {
+function sideColumn(days, horizon, ref) {
   const heavy = days.filter((d) => d.heavy);
   const totalHours = days.reduce((s, d) => s + d.hours, 0);
 
@@ -166,6 +170,46 @@ function sideColumn(days, state, ref) {
         </table>
       </div>` : `<div class="card-pad muted small">No dated work in the next two weeks.</div>`}
     </div>
+    ${horizonCard(horizon, ref)}
+  </div>`;
+}
+
+/**
+ * Later is only tolerable if it's never a hole things vanish into. This card is the
+ * receipt: what's waiting, and the exact day each one arrives.
+ */
+function horizonCard(later, ref) {
+  const shown = later.slice(0, 6);
+  return `
+  <div class="card" id="horizon-card">
+    <div class="card-head">
+      <div><h2>On the horizon</h2>
+        <span class="hint">${later.length
+          ? `${later.length} task${later.length === 1 ? "" : "s"} waiting · next arrives ${fmtDate(later[0].surfaces)}`
+          : "Nothing waiting"}</span>
+      </div>
+    </div>
+    ${shown.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Course</th><th>Task</th><th class="num">Surfaces</th><th class="num">Due</th></tr></thead>
+        <tbody>
+          ${shown.map((t) => `
+          <tr data-state="later">
+            <td class="nowrap"><span class="chip" style="--accent:var(--c-${t.course})">${esc(t.course)}</span></td>
+            <td><span class="cell-main">${esc(t.task)}</span>
+              ${t.type ? `<span class="cell-sub faint">${esc(t.type)}</span>` : ""}</td>
+            <td class="num nowrap">${fmtDate(t.surfaces)}
+              <span class="cell-sub faint">in ${dayDiff(t.surfaces, ref)}d</span></td>
+            <td class="num nowrap">${fmtDate(t.due)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    ${later.length > shown.length
+      ? `<div class="card-pad muted small">+ ${later.length - shown.length} more, further out. Every course tab has a Later filter.</div>`
+      : ""}`
+    : `<div class="card-pad muted small">Everything open is active right now.</div>`}
   </div>`;
 }
 
@@ -176,8 +220,9 @@ function courseTable(rows, ref) {
       <thead>
         <tr>
           <th>Course</th><th style="min-width:120px">Progress</th>
-          <th class="num">Open</th><th class="num">Overdue</th><th class="num">Due ≤7d</th>
-          <th class="num">Est. hrs</th><th>Next big one</th><th class="num">Days away</th>
+          <th class="num">Active</th><th class="num">Later</th>
+          <th class="num">Overdue</th><th class="num">Due ≤7d</th>
+          <th class="num">Active hrs</th><th>Next big one</th><th class="num">Days away</th>
         </tr>
       </thead>
       <tbody>
@@ -192,10 +237,11 @@ function courseTable(rows, ref) {
               ${bar(c.pctDone)}<span class="num">${fmtPct(c.pctDone)}</span>
             </div>
           </td>
-          <td class="num">${c.open}</td>
+          <td class="num">${c.active}</td>
+          <td class="num faint">${c.later || "—"}</td>
           <td class="num ${c.overdue ? "days-left" : ""}" data-neg="${c.overdue > 0}">${c.overdue}</td>
           <td class="num">${c.dueWeek}</td>
-          <td class="num">${fmtHours(c.estHours)}</td>
+          <td class="num">${fmtHours(c.activeHours)}</td>
           <td>${c.nextBig
             ? `<span class="cell-main">${esc(c.nextBig.task)}</span><span class="cell-sub faint">${esc(c.nextBig.type)} · ${fmtDate(c.nextBig.due)}</span>`
             : '<span class="faint">—</span>'}</td>

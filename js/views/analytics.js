@@ -30,13 +30,15 @@ export function renderAnalytics(outlet) {
       <div>
         <div class="eyebrow">Analytics</div>
         <h1>Cross-course statistics</h1>
-        <p>Coursework only — the Personal list is excluded from every number on this page.</p>
+        <p>Coursework only — the Personal list is excluded from every number on this page.
+        This page counts the whole semester; the dashboard counts what's active today.</p>
       </div>
     </header>
 
     <div class="stat-grid">
       <div class="stat"><span class="stat-label">Total tasks</span><span class="stat-value">${a.snapshot.total}</span></div>
-      <div class="stat"><span class="stat-label">Open</span><span class="stat-value">${a.snapshot.open}</span></div>
+      <div class="stat"><span class="stat-label">Open</span><span class="stat-value">${a.snapshot.open}</span>
+        <span class="stat-sub">${a.snapshot.active} active · ${a.snapshot.later} later</span></div>
       <div class="stat" data-tone="success"><span class="stat-label">Completed</span>
         <span class="stat-value">${a.snapshot.completed}</span>
         <span class="stat-sub">${fmtPct(a.snapshot.completion)} completion</span></div>

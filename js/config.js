@@ -18,6 +18,13 @@ export const dailyCapacityMin = 90;
 /** Hours of work on a single day that make it a "heavy day" on the 14-day chart. */
 export const heavyDayHours = 4;
 
+/**
+ * How far ahead a task starts counting as active. Anything due beyond this sits in
+ * "Later" — still real, still editable, just not in today's list. The one tuning knob
+ * for that split; Settings writes an override to prefs.horizonDays.
+ */
+export const horizonDays = 21;
+
 export const courseIds = ["CS440", "CS391", "CS360", "ENG216"];
 
 export const courses = {

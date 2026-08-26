@@ -1,11 +1,12 @@
 import { load, update, exportJSON, importJSON, resetToSeed } from "../store.js";
 import { courseIds } from "../config.js";
-import { isNamed } from "../compute.js";
+import { isNamed, horizonOf, dashboardStats } from "../compute.js";
 import { esc, openDialog } from "../ui.js";
 
 export function renderSettings(outlet) {
   const state = load();
   const counts = courseIds.map((id) => `${id} ${state.tasks[id].filter(isNamed).length}`).join(" · ");
+  const stats = dashboardStats(state);
 
   outlet.style.cssText = "";
   outlet.innerHTML = `
@@ -47,6 +48,25 @@ export function renderSettings(outlet) {
                 `<option value="${t}" ${state.prefs.theme === t ? "selected" : ""}>${t[0].toUpperCase() + t.slice(1)}</option>`).join("")}
             </select>
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Active vs Later</h2></div>
+        <div class="card-pad">
+          <div class="field" style="max-width:240px">
+            <label for="horizon">Show a task as active</label>
+            <select id="horizon">
+              ${[14, 21, 30, 60].map((d) =>
+                `<option value="${d}" ${horizonOf(state) === d ? "selected" : ""}>${d} days before it's due</option>`).join("")}
+            </select>
+          </div>
+          <p class="small faint" style="margin-top:var(--sp-2)">
+            Anything due further out waits in <strong>Later</strong> — still editable, still counted in
+            Analytics, just not in today's list. A task also surfaces early if its start-by date arrives
+            first, the moment you mark it In Progress, or if it ever goes overdue. Currently
+            <strong>${stats.active} active</strong> and <strong>${stats.later} later</strong>.
+          </p>
         </div>
       </div>
 
@@ -116,6 +136,11 @@ function wire(outlet) {
 
   outlet.querySelector("#theme").addEventListener("change", (e) => {
     update((draft) => { draft.prefs.theme = e.target.value; });
+  });
+
+  outlet.querySelector("#horizon").addEventListener("change", (e) => {
+    update((draft) => { draft.prefs.horizonDays = Number(e.target.value); });
+    renderSettings(outlet); // the active/later counts in the description move with it
   });
 
   outlet.querySelector("#include-personal").addEventListener("change", (e) => {

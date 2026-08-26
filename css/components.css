@@ -89,6 +89,27 @@
   font-size: var(--step--1); white-space: nowrap;
 }
 
+.timing {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.timing legend {
+  padding: 0 var(--sp-2);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+.timing p { color: var(--text-muted); margin-bottom: var(--sp-3); }
+.timing-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+}
+.timing-row input[type="date"] { width: auto; }
+
 /* ----------------------------------------------------------------- tables */
 
 .table-wrap {
@@ -143,6 +164,21 @@ tr[data-state="overdue"]:hover { background: color-mix(in oklab, var(--danger) 1
 tr[data-state="soon"]:hover { background: color-mix(in oklab, var(--warning) 13%, var(--surface)); }
 tr[data-state="done"] { opacity: 0.5; }
 tr[data-state="done"] .cell-main { text-decoration: line-through; }
+
+/* Later: quieter than an active row, but not struck out or half-faded like a
+   finished one — this work is still ahead of you, just not yet. */
+tr[data-state="later"] > td:first-child { border-left-color: var(--border-strong); }
+tr[data-state="later"] .cell-main { color: var(--text-muted); }
+tr[data-state="later"] td.num { color: var(--text-faint); }
+
+.tag-later {
+  display: block;
+  width: fit-content;
+  margin-top: 2px;
+  border-style: dashed;
+  color: var(--text-faint);
+  background: none;
+}
 
 .days-left[data-neg="true"] { color: var(--danger); font-weight: 700; }
 .start-flag { color: var(--warning); font-weight: 700; }

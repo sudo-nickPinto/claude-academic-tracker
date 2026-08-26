@@ -4,11 +4,13 @@
  * reimplementing load/save/subscribe and nothing else.
  */
 
-import { courseIds } from "./config.js";
+import { courseIds, horizonDays } from "./config.js";
 import { seedTasks, seedPersonal, seedGrades } from "./seed.js";
 
+// The key stays at v1 across version bumps: changing it would orphan saved data.
+// `version` records the shape, and normalize() migrates older payloads forward.
 const KEY = "academic-tracker/v1";
-const VERSION = 1;
+const VERSION = 2;
 
 const listeners = new Set();
 let state = null;
@@ -19,7 +21,7 @@ function seedState() {
     tasks: structuredClone(seedTasks),
     personal: structuredClone(seedPersonal),
     grades: structuredClone(seedGrades),
-    prefs: { theme: "system", includePersonalInWeek: false },
+    prefs: { theme: "system", includePersonalInWeek: false, horizonDays },
   };
 }
 
@@ -33,7 +35,10 @@ function normalize(raw) {
 
   const tasks = {};
   for (const id of courseIds) {
-    tasks[id] = Array.isArray(raw.tasks?.[id]) ? raw.tasks[id] : [];
+    const saved = Array.isArray(raw.tasks?.[id]) ? raw.tasks[id] : [];
+    // v1 → v2: activeFrom is the manual override on when a task leaves "Later".
+    // Absent means automatic, which is what every pre-v2 task should be.
+    tasks[id] = saved.map((t) => ({ activeFrom: null, ...t }));
   }
 
   const grades = {};

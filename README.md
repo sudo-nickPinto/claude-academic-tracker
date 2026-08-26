@@ -48,7 +48,32 @@ else is context. Personal tasks are excluded from every statistic and chart, and
 list only when you flip the "include personal" toggle.
 
 **Course tabs** (CS440, CS391, CS360, ENG216) are the full task lists — add, edit, complete, delete.
-The checkbox in the first column is the fast path for "I finished this."
+The checkbox in the first column is the fast path for "I finished this." The filter defaults to
+**Active now**; switch it to **Later** to see what's waiting.
+
+### Active vs Later
+
+A December project isn't something you can act on in August, and counting it as "open" all semester
+is how a task list becomes wallpaper. So every task has a date it *surfaces* on:
+
+```
+surfaces on = earlier of ( due − 21 days ,  Start By )
+```
+
+Before that day it sits in **Later** — fully editable, still counted in Analytics and in your
+completion percentage, just not in today's list. Add notes, refine the estimate, log what you've
+read; it stays quiet. Four things pull a task out of Later early:
+
+- its surface date arrives (automatic, no action needed);
+- you set its status to **In Progress** or **Waiting / Blocked** — work has actually started;
+- you hit **Surface** on the row, or **Surface now** in the edit dialog;
+- it goes overdue, which always surfaces, no exceptions.
+
+You can also **push a task back** to a date you choose from the Timing box in the edit dialog, and
+clear that date to return it to automatic. **Settings → Active vs Later** changes the 21 days.
+
+Nothing disappears: the Dashboard's **On the horizon** card always shows what's waiting and the
+exact day each item arrives.
 
 **Personal** is deliberately thin: task, notes, due date, priority, status. It never feeds the
 dashboard or analytics.
