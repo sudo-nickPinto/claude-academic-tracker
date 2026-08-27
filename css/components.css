@@ -426,6 +426,33 @@ tr[data-mine="true"] > td:first-child { border-left: 3px solid var(--accent); }
   .cell-fold-inline[data-when="t3"] { display: inline-block; }
 }
 
+/* A grab-handle column costs about 40px that the folding tiers above know nothing
+   about, so in "Order: mine" every tier has to fold that much sooner. Same rules,
+   same order of sacrifice — just triggered a little earlier. */
+@container tbl (max-width: 1050px) {
+  [data-sort="manual"] [data-col="t1"] { display: none; }
+  [data-sort="manual"] .cell-fold[data-when="t1"] { display: block; }
+}
+@container tbl (max-width: 860px) {
+  [data-sort="manual"] [data-col="t2"] { display: none; }
+  [data-sort="manual"] .cell-fold[data-when="t2"] { display: block; }
+  [data-sort="manual"] .cell-fold-inline[data-when="t2"] { display: inline-block; }
+}
+@container tbl (max-width: 740px) {
+  [data-sort="manual"] [data-col="t3"] { display: none; }
+  [data-sort="manual"] .cell-fold[data-when="t3"] { display: block; }
+  [data-sort="manual"] .cell-fold-inline[data-when="t3"] { display: inline-block; }
+}
+
+/* Once every optional column is already folded away, the handle column is the only
+   thing still making the table too wide for its box — and cards are a bigger loss
+   than a few pixels of padding. Tighten the cells instead; it buys back more than
+   the handle costs, and keeps the table a table down to the same width as before. */
+@container tbl (max-width: 700px) {
+  [data-sort="manual"] thead th,
+  [data-sort="manual"] tbody td { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+}
+
 /* Below ~560px a ten-column table is not a table. Rows become cards with their
    header text moved inline, and every folded column comes back — there is room
    for all of it once the columns stop competing for the same line. */
@@ -481,6 +508,12 @@ tr[data-mine="true"] > td:first-child { border-left: 3px solid var(--accent); }
   /* The checkbox and the task name share the card's first line. */
   tbody td[data-cell="check"] { grid-column: 1; grid-row: 1; width: auto; }
   tbody td[data-cell="main"] { grid-column: 2; grid-row: 1; }
+
+  /* With a grab handle the card's first line is three things wide, not two. */
+  tbody tr:has(td[data-cell="grip"]) { grid-template-columns: auto auto minmax(0, 1fr); }
+  tbody tr:has(td[data-cell="grip"]) td[data-cell="grip"] { grid-column: 1; grid-row: 1; width: auto; }
+  tbody tr:has(td[data-cell="grip"]) td[data-cell="check"] { grid-column: 2; grid-row: 1; }
+  tbody tr:has(td[data-cell="grip"]) td[data-cell="main"] { grid-column: 3; grid-row: 1; }
   tbody td[data-cell="act"] { justify-self: start; }
 
   /* The urgency stripe belongs to the whole card now, not to a first cell that is
@@ -497,6 +530,50 @@ tr[data-mine="true"] > td:first-child { border-left: 3px solid var(--accent); }
   .cell-main { font-size: var(--step-1); }
   .cell-sub { max-width: none; }
   .tag-later { margin-top: var(--sp-1); }
+}
+
+/* -------------------------------------------------------------- reordering */
+
+/* Grab handles only exist in "Order: mine". In due-date order the column is not
+   rendered at all, so there is nothing to explain away. */
+td[data-cell="grip"] { width: 30px; padding-right: 0; }
+
+.grip {
+  display: block;
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  /* Without this a finger drag scrolls the page instead of moving the row. */
+  touch-action: none;
+}
+.grip:hover { color: var(--text); background: var(--surface-2); }
+tbody[data-dragging] .grip { cursor: grabbing; }
+
+/* The row being carried, and the ones politely getting out of its way. */
+tr[data-dragging] {
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+  position: relative;
+  z-index: 2;
+}
+tbody[data-dragging] tr:not([data-dragging]) { opacity: 0.7; }
+tbody[data-dragging] { user-select: none; }
+
+.reorder-hint { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
+.reorder-hint kbd {
+  font: inherit;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
 }
 
 /* --------------------------------------------------------------- calendar */

@@ -114,6 +114,55 @@ export function isActive(task, ref = today(), horizon = horizonDays) {
 export const horizonOf = (state) =>
   typeof state?.prefs?.horizonDays === "number" ? state.prefs.horizonDays : horizonDays;
 
+// -------------------------------------------------------------------- ordering
+
+/**
+ * The default reading order of a course tab: soonest deadline first, undated work
+ * last, ties broken by the workbook's own row order so the list never shuffles
+ * under you between renders.
+ */
+export function byDue(a, b) {
+  if (!a.due && !b.due) return (a.seq ?? 0) - (b.seq ?? 0);
+  if (!a.due) return 1;
+  if (!b.due) return -1;
+  return a.due.localeCompare(b.due) || (a.seq ?? 0) - (b.seq ?? 0);
+}
+
+/** A task's manual position, falling back to the workbook row it came from. */
+export const orderValue = (t) => (typeof t.order === "number" ? t.order : (t.seq ?? 0));
+
+/** The order you dragged the list into. */
+export const byOrder = (a, b) => orderValue(a) - orderValue(b) || (a.seq ?? 0) - (b.seq ?? 0);
+
+/** 'manual' only for a course that was explicitly switched to it. */
+export const sortModeOf = (state, courseId) =>
+  state?.prefs?.courseSort?.[courseId] === "manual" ? "manual" : "due";
+
+/**
+ * New order values after a drag, as a Map of id → order.
+ *
+ * `visibleOrder` is the ids of the rows on screen, in the sequence you just put them
+ * in. Only the positions those rows already occupied are reused: the visible rows
+ * shuffle among their own slots and every hidden task keeps the place it had. That
+ * is what makes it safe to reorder while filtered to "Active now" — nothing you
+ * cannot see can move. The course is then renumbered 0..n-1, so values stay unique
+ * and small however many times you rearrange it.
+ */
+export function reorderCourse(tasks, visibleOrder) {
+  const sequence = [...tasks].sort(byOrder);
+  const known = new Set(sequence.map((t) => t.id));
+  const moving = [...new Set(visibleOrder)].filter((id) => known.has(id));
+  const movingSet = new Set(moving);
+
+  const slots = [];
+  sequence.forEach((t, i) => { if (movingSet.has(t.id)) slots.push(i); });
+
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  slots.forEach((slot, i) => { sequence[slot] = byId.get(moving[i]); });
+
+  return new Map(sequence.map((t, i) => [t.id, i]));
+}
+
 /** Coursework only. Personal is deliberately excluded from every aggregate. */
 export function courseTasks(state) {
   return courseIds.flatMap((id) =>
@@ -153,10 +202,6 @@ export const hasCalendar = (state) => Boolean(state?.calendar?.events?.length);
 
 export const semesterWindow = (state) => ({ ...semester, ...(state?.prefs?.semester || {}) });
 
-/**
- * Minutes actually available for coursework on a date: the daily capacity less
- * whatever the calendar has already spoken for, floored at zero.
- */
 /**
  * Minutes of coursework a day can absorb: the workbook's focused-work assumption,
  * but never more than what the calendar has left of the working day. With no

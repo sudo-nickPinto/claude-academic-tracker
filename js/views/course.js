@@ -1,11 +1,12 @@
 import { courses } from "../config.js";
-import { load } from "../store.js";
+import { load, update } from "../store.js";
 import {
   today, daysLeft, startBy, realisticStart, rowState, shouldHaveStarted, isDone, isNamed,
-  isLater, surfacesOn, horizonOf, hasCalendar,
+  isLater, surfacesOn, horizonOf, hasCalendar, byDue, byOrder, sortModeOf, reorderCourse,
 } from "../compute.js";
 import { esc, fmtDate, fmtHours, fmtPct, pill, bar, daysLabel, emptyState } from "../ui.js";
 import { openTaskDialog, toggleDone, surfaceNow } from "./taskdialog.js";
+import { sortableRows } from "../dnd.js";
 
 const filters = {};
 
@@ -28,15 +29,11 @@ export function renderCourse(outlet, id) {
   const open = all.filter((t) => !isDone(t));
   const later = open.filter((t) => isLater(t, ref, horizon));
   const match = MATCHERS[f.status] || MATCHERS.all;
+  const mode = sortModeOf(state, id);
   const visible = all
     .filter((t) => match(t, ref, horizon))
     .filter((t) => !f.q || `${t.task} ${t.details} ${t.source} ${t.notes}`.toLowerCase().includes(f.q.toLowerCase()))
-    .sort((a, b) => {
-      if (!a.due && !b.due) return a.seq - b.seq;
-      if (!a.due) return 1;
-      if (!b.due) return -1;
-      return a.due.localeCompare(b.due) || a.seq - b.seq;
-    });
+    .sort(mode === "manual" ? byOrder : byDue);
 
   const active = open.filter((t) => !isLater(t, ref, horizon));
   const withCal = hasCalendar(state);
@@ -76,15 +73,25 @@ export function renderCourse(outlet, id) {
         <option value="done" ${f.status === "done" ? "selected" : ""}>Completed</option>
       </select>
       <input id="f-q" type="text" placeholder="Search tasks…" value="${esc(f.q)}" style="width:auto;flex:1 1 200px">
+      <select id="f-sort" style="width:auto" aria-label="Order the list by">
+        <option value="due" ${mode === "due" ? "selected" : ""}>Order: by due date</option>
+        <option value="manual" ${mode === "manual" ? "selected" : ""}>Order: mine</option>
+      </select>
       <span class="spacer"></span>
       <span class="small faint">${visible.length} shown</span>
     </div>
 
-    ${visible.length ? table(visible, ref, horizon, state, withCal) : emptyState(
+    ${mode === "manual" ? `<p class="small faint reorder-hint">
+      Drag a <span aria-hidden="true">⠿</span> handle to rearrange, or focus one and use
+      <kbd>↑</kbd> <kbd>↓</kbd>. Only the rows you can see move — anything hidden by the
+      filter stays where it is.</p>` : ""}
+    <p class="sr" role="status" aria-live="polite" id="reorder-status"></p>
+
+    ${visible.length ? table(visible, ref, horizon, state, withCal, mode) : emptyState(
       emptyHeadline(f, later.length),
       f.q ? "" : "Add one with the New task button.")}`;
 
-  wire(outlet, id, f);
+  wire(outlet, id, f, mode);
 }
 
 function emptyHeadline(f, laterCount) {
@@ -96,12 +103,13 @@ function emptyHeadline(f, laterCount) {
     : "No open tasks — you're clear.";
 }
 
-function table(rows, ref, horizon, state, withCal) {
+function table(rows, ref, horizon, state, withCal, mode) {
   return `
-  <div class="table-wrap">
+  <div class="table-wrap" data-sort="${mode}">
     <table>
       <thead>
         <tr>
+          ${mode === "manual" ? '<th style="width:30px"><span class="sr">Reorder</span></th>' : ""}
           <th style="width:34px"><span class="sr">Done</span></th>
           <th>Task</th>
           <th data-col="t2">Type</th>
@@ -114,12 +122,12 @@ function table(rows, ref, horizon, state, withCal) {
           <th style="width:52px"></th>
         </tr>
       </thead>
-      <tbody>${rows.map((t) => row(t, ref, horizon, state, withCal)).join("")}</tbody>
+      <tbody>${rows.map((t) => row(t, ref, horizon, state, withCal, mode)).join("")}</tbody>
     </table>
   </div>`;
 }
 
-function row(t, ref, horizon, state, withCal) {
+function row(t, ref, horizon, state, withCal, mode) {
   const left = daysLeft(t, ref);
   const start = startBy(t);
   const real = withCal ? realisticStart(t, state, ref) : null;
@@ -130,6 +138,9 @@ function row(t, ref, horizon, state, withCal) {
 
   return `
   <tr data-state="${later ? "later" : rowState(t, ref)}" data-id="${t.id}" data-later="${later}">
+    ${mode === "manual" ? `<td data-cell="grip"><button class="grip" type="button"
+      aria-label="Reorder ${esc(t.task)}"
+      title="Drag to move this row, or use the arrow keys">⠿</button></td>` : ""}
     <td data-cell="check"><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
     <td data-cell="main">
       <span class="cell-main">${esc(t.task)}</span>
@@ -155,7 +166,7 @@ function row(t, ref, horizon, state, withCal) {
   </tr>`;
 }
 
-function wire(outlet, id, f) {
+function wire(outlet, id, f, mode) {
   const rerender = () => renderCourse(outlet, id);
 
   outlet.querySelector("#add-task").addEventListener("click", () =>
@@ -163,6 +174,12 @@ function wire(outlet, id, f) {
 
   outlet.querySelector("#f-status").addEventListener("change", (e) => {
     f.status = e.target.value;
+    rerender();
+  });
+
+  outlet.querySelector("#f-sort").addEventListener("change", (e) => {
+    const next = e.target.value;
+    update((draft) => { draft.prefs.courseSort[id] = next; });
     rerender();
   });
 
@@ -189,5 +206,24 @@ function wire(outlet, id, f) {
       surfaceNow(id, taskId);
       rerender();
     });
+  });
+
+  if (mode !== "manual") return;
+  const body = outlet.querySelector("tbody");
+  if (!body) return;
+
+  sortableRows(body, {
+    announce: (text) => { outlet.querySelector("#reorder-status").textContent = text; },
+    onCommit: (orderedIds, movedId) => {
+      update((draft) => {
+        const list = draft.tasks[id];
+        const next = reorderCourse(list, orderedIds);
+        for (const task of list) task.order = next.get(task.id);
+      });
+      rerender();
+      // Re-rendering replaces the row that was just moved; put the caret back on its
+      // handle so a keyboard user can press the arrow key again without re-finding it.
+      outlet.querySelector(`tr[data-id="${movedId}"] .grip`)?.focus();
+    },
   });
 }

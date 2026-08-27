@@ -69,7 +69,14 @@ const before = await page.locator("#outlet tbody tr").count();
 
 await page.click("#add-task");
 await page.fill("#f-task", "Playwright smoke task");
-await page.fill("#f-due", "2026-08-26");
+// Two days out, computed rather than hard-coded: "due soon" is a claim about the
+// distance from today, so a fixed date turns the check into a calendar bomb.
+const soonDue = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 2);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+})();
+await page.fill("#f-due", soonDue);
 await page.fill("#f-est", "180");
 await page.selectOption("#f-priority", "High");
 await page.click("#task-form button[type=submit]");
@@ -79,8 +86,14 @@ check("CRUD add", (await page.locator("#outlet tbody tr").count()) === before + 
 const added = page.locator("tbody tr", { hasText: "Playwright smoke task" });
 check("new row is due-soon styled", (await added.getAttribute("data-state")) === "soon",
   `state=${await added.getAttribute("data-state")}`);
-check("startBy = due - 2d for 180min", (await added.locator("td").nth(8).textContent()).trim() === "Aug 24",
-  (await added.locator("td").nth(8).textContent()).trim());
+const startByLabel = (() => {
+  const [y, m, d] = soonDue.split("-").map(Number);
+  const back = new Date(y, m - 1, d - 2);  // 180 min of work backs the due date up two days
+  return back.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+})();
+check("startBy = due - 2d for 180min",
+  (await added.locator("td").nth(8).textContent()).trim() === startByLabel,
+  `${(await added.locator("td").nth(8).textContent()).trim()} (expected ${startByLabel})`);
 
 // persistence across reload
 await page.reload({ waitUntil: "networkidle" });
@@ -242,7 +255,7 @@ const stored = await page.evaluate(() => {
            stats: s.calendar.stats };
 });
 check("events land in the calendar slice, not in tasks", stored.n > 0, `${stored.n} events`);
-check("state migrated to v3", stored.v === 3, `version=${stored.v}`);
+check("state migrated to v4", stored.v === 4, `version=${stored.v}`);
 check("every VEVENT in the file was accounted for",
   stored.stats.entries === 11 && stored.stats.unreadable === 0, JSON.stringify(stored.stats));
 check("free events are a subset of the imported ones, not a separate skip",
@@ -310,6 +323,91 @@ const forecastRestored = (await page.locator(".card", { hasText: "Next 14 days" 
   .locator(".hint").first().textContent()).trim();
 check("the forecast returns to exactly what it said before", forecastRestored === forecastBefore,
   `${forecastBefore} -> ${forecastRestored}`);
+
+// ----------------------------------------------------------- manual ordering
+// The one property worth proving in a browser: a drag under a filter must not move
+// anything the filter is hiding.
+await page.goto(BASE + "/#/course/CS360", { waitUntil: "networkidle" });
+const idsOf = () => page.$$eval("#outlet tbody tr", (rows) => rows.map((r) => r.dataset.id));
+
+check("no grab handles in due-date order", await page.locator("#outlet .grip").count() === 0);
+await page.selectOption("#f-sort", "manual");
+await page.waitForTimeout(150);
+check("switching to my order gives every row a handle",
+  await page.locator("#outlet .grip").count() === await page.locator("#outlet tbody tr").count());
+
+await page.selectOption("#f-status", "all");
+await page.waitForTimeout(150);
+const allBefore = await idsOf();
+await page.selectOption("#f-status", "active");
+await page.waitForTimeout(150);
+const activeBefore = await idsOf();
+check("the course has both visible and hidden rows to test with",
+  activeBefore.length > 1 && allBefore.length > activeBefore.length,
+  `${activeBefore.length} of ${allBefore.length}`);
+
+// Drag the top row down past the last one.
+const grip = page.locator("#outlet .grip").first();
+const lastRow = page.locator("#outlet tbody tr").last();
+const from = await grip.boundingBox();
+const to = await lastRow.boundingBox();
+await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+await page.mouse.down();
+await page.mouse.move(from.x + from.width / 2, from.y + 24, { steps: 4 });
+await page.mouse.move(from.x + from.width / 2, to.y + to.height - 4, { steps: 24 });
+await page.mouse.up();
+await page.waitForTimeout(250);
+
+const activeAfter = await idsOf();
+check("dragging the top row to the bottom puts it at the bottom",
+  activeAfter.at(-1) === activeBefore[0], `${activeBefore[0]} -> ${activeAfter.at(-1)}`);
+check("and leaves every other visible row in its relative order",
+  activeAfter.slice(0, -1).join() === activeBefore.slice(1).join());
+
+await page.selectOption("#f-status", "all");
+await page.waitForTimeout(150);
+const allAfter = await idsOf();
+const hidden = allBefore.filter((id) => !activeBefore.includes(id));
+check("rows hidden by the filter keep their exact positions",
+  hidden.every((id) => allBefore.indexOf(id) === allAfter.indexOf(id)),
+  `${hidden.length} hidden rows`);
+check("no row was lost or duplicated",
+  allAfter.length === allBefore.length && new Set(allAfter).size === allAfter.length);
+
+await page.reload({ waitUntil: "networkidle" });
+await page.waitForTimeout(250);
+check("the sort mode survives a reload", await page.inputValue("#f-sort") === "manual");
+await page.selectOption("#f-status", "all"); // the filter itself is per-session, not saved
+await page.waitForTimeout(150);
+check("so does the order", (await idsOf()).join() === allAfter.join());
+
+// Keyboard, because a drag-only feature is one some people simply can't use.
+const kbBefore = await idsOf();
+await page.locator("#outlet .grip").first().focus();
+await page.keyboard.press("ArrowDown");
+await page.waitForTimeout(200);
+const kbAfter = await idsOf();
+check("arrow keys move a row one place",
+  kbAfter[0] === kbBefore[1] && kbAfter[1] === kbBefore[0], kbAfter.slice(0, 2).join(" "));
+check("focus follows the row it moved",
+  await page.evaluate(() => document.activeElement?.closest("tr")?.dataset.id) === kbBefore[0]);
+await page.keyboard.press("ArrowUp");
+await page.waitForTimeout(200);
+check("and undo it", (await idsOf()).join() === kbBefore.join());
+
+check("one course's order doesn't touch another", await page.evaluate(async () => {
+  const raw = JSON.parse(localStorage.getItem("academic-tracker/v1"));
+  return raw.prefs.courseSort.CS360 === "manual" && !raw.prefs.courseSort.CS440;
+}));
+
+await page.goto(BASE + "/#/course/CS360", { waitUntil: "networkidle" });
+await page.selectOption("#f-sort", "due");
+await page.waitForTimeout(150);
+check("going back to due-date order still sorts by date", await page.evaluate(() => {
+  const dates = [...document.querySelectorAll('#outlet tbody td[data-label="Due"]')]
+    .map((td) => td.textContent.trim()).filter((t) => t && t !== "\u2014");
+  return dates.every((d, i) => i === 0 || new Date(dates[i - 1]) <= new Date(d));
+}));
 
 // ------------------------------------------------------------- export/import
 await page.goto(BASE + "/#/settings", { waitUntil: "networkidle" });

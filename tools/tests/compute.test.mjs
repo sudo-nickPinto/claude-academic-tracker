@@ -266,5 +266,64 @@ eq("a calendar full of class moves the advised start no later than the plain one
    advised <= C.startBy(task), true);
 eq("and never advises a date already in the past", advised >= REF, true);
 
+// --- manual ordering ------------------------------------------------------
+// The property that matters: reordering the rows you can see must never disturb
+// the rows you can't. Everything else is bookkeeping.
+const mk = (id, order) => ({ id, order, seq: order, task: id, due: null, status: "Not Started" });
+const list = ["a", "b", "c", "d", "e"].map((id, i) => mk(id, i));
+const applied = (tasks, visible) => {
+  const patch = C.reorderCourse(tasks, visible);
+  return tasks
+    .map((t) => ({ ...t, order: patch.get(t.id) }))
+    .sort(C.byOrder)
+    .map((t) => t.id);
+};
+
+eq("an unchanged order is a no-op", applied(list, ["a", "b", "c", "d", "e"]),
+   ["a", "b", "c", "d", "e"]);
+eq("moving a row to the top", applied(list, ["d", "a", "b", "c", "e"]),
+   ["d", "a", "b", "c", "e"]);
+eq("moving a row to the bottom", applied(list, ["b", "c", "d", "e", "a"]),
+   ["b", "c", "d", "e", "a"]);
+eq("orders come back as a dense 0..n-1 run",
+   [...C.reorderCourse(list, ["e", "d", "c", "b", "a"]).values()].sort((x, y) => x - y),
+   [0, 1, 2, 3, 4]);
+
+// b and d are filtered out of view; a, c, e are dragged into the order e, c, a.
+// b keeps slot 1 and d keeps slot 3, so the visible three land in slots 0, 2, 4.
+eq("a filtered drag only touches the rows on screen",
+   applied(list, ["e", "c", "a"]), ["e", "b", "c", "d", "a"]);
+eq("a hidden row keeps its exact order value",
+   C.reorderCourse(list, ["e", "c", "a"]).get("b"), 1);
+
+eq("ids that aren't in the course are ignored",
+   applied(list, ["ghost", "c", "a"]), ["c", "b", "a", "d", "e"]);
+eq("a repeated id is only placed once",
+   applied(list, ["c", "c", "a"]).length, 5);
+eq("an empty drag changes nothing", applied(list, []), ["a", "b", "c", "d", "e"]);
+
+// A task saved before v4 has no `order` at all; it must still sort by its seq.
+const legacy = [{ id: "x", seq: 2, task: "x" }, { id: "y", seq: 1, task: "y" }];
+eq("byOrder falls back to seq for a pre-v4 task",
+   [...legacy].sort(C.byOrder).map((t) => t.id), ["y", "x"]);
+eq("and reordering one still produces real order values",
+   [...C.reorderCourse(legacy, ["x", "y"]).values()], [0, 1]);
+
+// byDue is the old inline comparator, extracted — same list, same order.
+const dued = [
+  { id: "p", due: "2026-09-02", seq: 3 },
+  { id: "q", due: null, seq: 1 },
+  { id: "r", due: "2026-09-01", seq: 2 },
+  { id: "s", due: "2026-09-01", seq: 1 },
+];
+eq("byDue: soonest first, undated last, seq breaks ties",
+   [...dued].sort(C.byDue).map((t) => t.id), ["s", "r", "p", "q"]);
+
+eq("sortModeOf defaults to due", C.sortModeOf({ prefs: {} }, "CS440"), "due");
+eq("sortModeOf reads the per-course setting",
+   C.sortModeOf({ prefs: { courseSort: { CS440: "manual" } } }, "CS440"), "manual");
+eq("one course's setting doesn't leak into another",
+   C.sortModeOf({ prefs: { courseSort: { CS440: "manual" } } }, "CS360"), "due");
+
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nAll checks passed.");
 process.exit(fails ? 1 : 0);

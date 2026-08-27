@@ -217,7 +217,9 @@ function commit(listKey, existing, data, isPersonal) {
         id: crypto.randomUUID(),
         seq: nextSeq(),
         ...fields,
-        ...(isPersonal ? {} : { added: now }),
+        // A new task lands at the end of a manually ordered list: nextSeq() is
+        // always larger than any order value, which are renumbered 0..n-1.
+        ...(isPersonal ? {} : { added: now, order: nextSeq() }),
         completed: fields.status === "Done" ? now : null,
       });
     }
