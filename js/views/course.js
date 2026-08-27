@@ -1,15 +1,30 @@
 import { courses } from "../config.js";
-import { load } from "../store.js";
+import { load, undo } from "../store.js";
 import {
   today, daysLeft, startBy, realisticStart, rowState, shouldHaveStarted, isDone, isNamed,
   isLater, surfacesOn, horizonOf, hasCalendar,
 } from "../compute.js";
 import { esc, fmtDate, fmtHours, fmtPct, bar, daysLabel, emptyState } from "../ui.js";
 import { openTaskDialog } from "./taskdialog.js";
-import { toggleDone, surfaceNow } from "../tasks.js";
+import { toggleDone, surfaceNow, patchMany, editableFields, FIELD_SPEC } from "../tasks.js";
 import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
+import { showBulkBar, hideBulkBar } from "../ui/bulkbar.js";
+import { toastUndo } from "../ui/toast.js";
 
 const filters = {};
+
+/**
+ * Bulk selection state.
+ *
+ * The row checkbox does double duty rather than a second column appearing: an extra
+ * <td> would shift every cell index after it, and the table already folds three
+ * columns away by 700px — a permanent select column would be the first thing
+ * competing for that space. In select mode the same checkbox means "selected"
+ * instead of "done", which is also why the mode has to be explicit and visible.
+ */
+let selectMode = false;
+let selected = new Set();
+let selectionFor = null;
 
 const MATCHERS = {
   active: (t, ref, h) => !isDone(t) && !isLater(t, ref, h),
@@ -18,7 +33,40 @@ const MATCHERS = {
   all: () => true,
 };
 
+const FILTERS = [
+  { key: "active", label: "Active now" },
+  { key: "later", label: "Later" },
+  { key: "all", label: "All" },
+  { key: "done", label: "Completed" },
+];
+
+/**
+ * The filter, as a row of chips rather than a dropdown.
+ *
+ * A `<select>` hid three of the four counts behind a click — you could not see that
+ * fourteen tasks were waiting in Later without opening it. The chips show every count
+ * at once and cost one click instead of three, and they wrap rather than forcing a
+ * minimum width on the toolbar, which a native select does.
+ */
+function chipRow(f, counts) {
+  return `
+  <div class="chip-row" role="group" aria-label="Filter tasks">
+    ${FILTERS.map(({ key, label }) => `
+      <button type="button" class="chip-filter" data-filter="${key}"
+              aria-pressed="${f.status === key}">
+        ${esc(label)}<span class="chip-count">${counts[key]}</span>
+      </button>`).join("")}
+  </div>`;
+}
+
 export function renderCourse(outlet, id) {
+  // A selection means nothing on a course you are no longer looking at.
+  if (selectionFor !== id) {
+    selectionFor = id;
+    selectMode = false;
+    selected = new Set();
+  }
+
   const state = load();
   const info = courses[id];
   const all = state.tasks[id].filter(isNamed);
@@ -71,14 +119,18 @@ export function renderCourse(outlet, id) {
     </div>
 
     <div class="toolbar">
-      <select id="f-status" style="width:auto">
-        <option value="active" ${f.status === "active" ? "selected" : ""}>Active now</option>
-        <option value="later" ${f.status === "later" ? "selected" : ""}>Later (${later.length})</option>
-        <option value="all" ${f.status === "all" ? "selected" : ""}>All tasks</option>
-        <option value="done" ${f.status === "done" ? "selected" : ""}>Completed</option>
-      </select>
+      ${chipRow(f, {
+        active: active.length,
+        later: later.length,
+        all: all.length,
+        done: all.length - open.length,
+      })}
       <input id="f-q" type="text" placeholder="Search tasks…" value="${esc(f.q)}" style="width:auto;flex:1 1 200px">
       <span class="spacer"></span>
+      <button class="btn btn-sm" type="button" id="select-mode" aria-pressed="${selectMode}"
+              title="Use the row checkboxes to select tasks instead of completing them">
+        ${selectMode ? "Done selecting" : "Select"}
+      </button>
       <span class="small faint">${visible.length} shown</span>
     </div>
 
@@ -147,7 +199,9 @@ function row(listKey, t, ref, horizon, state, withCal) {
 
   return `
   <tr data-state="${later ? "later" : rowState(t, ref)}" data-id="${t.id}" data-later="${later}">
-    <td data-cell="check"><input type="checkbox" class="toggle checkbox" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
+    <td data-cell="check"><input type="checkbox" class="toggle checkbox" ${
+      (selectMode ? selected.has(t.id) : isDone(t)) ? "checked" : ""
+    } aria-label="${selectMode ? `Select ${esc(t.task)}` : `Mark ${esc(t.task)} done`}"></td>
     <td data-cell="main">
       <span class="cell-main">${esc(t.task)}</span>
       <span data-derived="later">${later ? laterTag(t, horizon) : ""}</span>
@@ -244,9 +298,11 @@ function wire(outlet, id, f) {
   outlet.querySelector("#add-task").addEventListener("click", () =>
     openTaskDialog(id, null, rerender));
 
-  outlet.querySelector("#f-status").addEventListener("change", (e) => {
-    f.status = e.target.value;
-    rerender();
+  outlet.querySelectorAll("[data-filter]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      f.status = chip.dataset.filter;
+      rerender();
+    });
   });
 
   const search = outlet.querySelector("#f-q");
@@ -258,9 +314,21 @@ function wire(outlet, id, f) {
     next.setSelectionRange(next.value.length, next.value.length);
   });
 
+  outlet.querySelector("#select-mode").addEventListener("click", () => {
+    selectMode = !selectMode;
+    selected = new Set();
+    rerender();
+  });
+
   outlet.querySelectorAll("tbody tr").forEach((tr) => {
     const taskId = tr.dataset.id;
-    tr.querySelector(".toggle").addEventListener("change", () => {
+    tr.querySelector(".toggle").addEventListener("change", (e) => {
+      if (selectMode) {
+        if (e.target.checked) selected.add(taskId);
+        else selected.delete(taskId);
+        paintBulkBar(outlet, id, rerender);
+        return;
+      }
       toggleDone(id, taskId);
       rerender();
     });
@@ -276,5 +344,46 @@ function wire(outlet, id, f) {
 
   mountQuickEdit(outlet, {
     onEdited: ({ task }) => refreshRow(outlet, id, task, f, rerender),
+  });
+
+  paintBulkBar(outlet, id, rerender);
+}
+
+/**
+ * Show or hide the bulk bar for the current selection, and apply what it asks for.
+ *
+ * Every bulk write goes through `patchMany`, which is one `update()` — so the whole
+ * batch is a single entry on the undo stack and one Undo puts all of it back. Doing
+ * it as N calls to `patchTask` would need N undos, in order, to get back to where
+ * you were.
+ */
+function paintBulkBar(outlet, listKey, rerender) {
+  if (!selectMode || selected.size === 0) {
+    hideBulkBar();
+    return;
+  }
+
+  const entries = [...selected].map((id) => ({ listKey, id }));
+  const apply = (fields, label) => {
+    const n = patchMany(entries, fields, { undoLabel: label });
+    selected = new Set();
+    rerender();
+    toastUndo(`${label} · ${n} task${n === 1 ? "" : "s"}`, () => {
+      undo();
+      rerender();
+    });
+  };
+
+  showBulkBar({
+    count: selected.size,
+    fields: editableFields(listKey)
+      .filter(([, spec]) => spec.kind === "choice")
+      .map(([field, spec]) => ({ field, label: spec.label, values: spec.values })),
+    onPick: (field, value) => apply({ [field]: value }, `${FIELD_SPEC[field].label} → ${value}`),
+    onDone: () => apply({ status: "Done" }, "Marked done"),
+    onClear: () => {
+      selected = new Set();
+      rerender();
+    },
   });
 }

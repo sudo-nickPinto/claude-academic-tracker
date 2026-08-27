@@ -237,3 +237,39 @@ select:disabled { cursor: not-allowed; }
    introduce a box of its own: the Later tag is display:block and sits directly among
    the inline spans of the main cell. */
 [data-derived="later"] { display: contents; }
+
+/* ------------------------------------------------------- collapsible block */
+
+/*
+ * The mobile dashboard was ~6,300px of stacked full-length cards. These sections
+ * fold instead. `open` is written by the view at render time rather than by a media
+ * query, because CSS cannot force a <details> back open — so a phone gets them
+ * closed and a desktop gets exactly what it had before.
+ */
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+
+/* A summary is display:list-item by default, which would drop the flex layout the
+   head it replaced relies on. */
+.fold > summary.section-head,
+.fold > summary.card-head { display: flex; align-items: center; }
+
+/* The chevron is the only thing the summary adds over that head. */
+.fold > summary::after {
+  content: "";
+  flex: none;
+  width: 7px; height: 7px;
+  margin-left: auto;
+  border-right: 2px solid var(--text-faint);
+  border-bottom: 2px solid var(--text-faint);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.fold[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.fold > summary:hover::after { border-color: var(--text-muted); }
+
+.fold:not([open]) > summary.card-head { border-bottom: none; }
+.fold:not([open]) > summary.section-head { margin-bottom: 0; }

@@ -3,6 +3,8 @@ import { load, subscribe } from "./store.js";
 import { courseTasks, isDone, isNamed } from "./compute.js";
 import { esc, openDialog } from "./ui.js";
 import { openPalette, closePalette, isPaletteOpen } from "./ui/palette.js";
+import { hideBulkBar } from "./ui/bulkbar.js";
+import { closePopover } from "./ui/popover.js";
 
 import { renderDashboard } from "./views/dashboard.js";
 import { renderCalendar } from "./views/calendar.js";
@@ -43,6 +45,11 @@ function render() {
   const { name, param } = currentRoute();
   const view = routes[name];
   outlet.scrollIntoView({ block: "start", behavior: "instant" });
+  // Both live outside #outlet, so replacing the view does not clear them: a bulk bar
+  // would otherwise float over the next page still offering to edit rows that are no
+  // longer on screen.
+  hideBulkBar();
+  closePopover({ restoreFocus: false });
   if (view) view(param);
   else notFound();
   paintNav();

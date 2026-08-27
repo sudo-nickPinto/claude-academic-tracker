@@ -38,13 +38,13 @@ export function renderDashboard(outlet) {
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>By course</h2>
-        <span class="small faint">Personal is excluded from every figure here.</span></div>
-      ${courseTable(byCourse, ref)}
+      ${fold(`<h2>By course</h2>
+        <span class="small faint">Personal is excluded from every figure here.</span>`,
+        courseTable(byCourse, ref))}
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Where the work is</h2></div>
+      ${fold("<h2>Where the work is</h2>", `
       <div class="chart-grid">
         ${chartCard("Active tasks by course", barChartH(byCourse.map((c) => ({
           label: c.course, value: c.active, color: `var(--c-${c.course})`,
@@ -53,7 +53,7 @@ export function renderDashboard(outlet) {
           label: c.course, value: Math.round(c.activeHours * 10) / 10, color: `var(--c-${c.course})`,
         })), { format: (v) => `${fmtHours(v)}h` }))}
         ${chartCard("Status of all coursework", donut(statusRows(state), { centerLabel: "tasks" }))}
-      </div>
+      </div>`)}
     </section>`;
 
   outlet.querySelector("#include-personal")?.addEventListener("change", (e) => {
@@ -81,6 +81,23 @@ function refreshStats(outlet, ref) {
   fresh.innerHTML = statGrid(dashboardStats(load(), ref));
   grid.innerHTML = fresh.firstElementChild.innerHTML;
 }
+
+/**
+ * A section that collapses on a phone.
+ *
+ * The mobile dashboard was about 6,300px tall, because every card renders at full
+ * length stacked — you scrolled past three analytic sections to reach anything. The
+ * open state is decided once at render rather than by a media query, because `<details>`
+ * can't be forced open from CSS: on a narrow screen these start closed and the week
+ * card is the whole first screen, on a wide one they behave as they always did.
+ */
+const wideScreen = () => window.matchMedia("(min-width: 621px)").matches;
+
+const fold = (head, body) => `
+  <details class="fold" ${wideScreen() ? "open" : ""}>
+    <summary class="fold-head section-head">${head}</summary>
+    ${body}
+  </details>`;
 
 function statGrid(s) {
   return `
@@ -270,14 +287,14 @@ function sideColumn(days, horizon, ref, withCal) {
 function horizonCard(later, ref) {
   const shown = later.slice(0, 6);
   return `
-  <div class="card" id="horizon-card">
-    <div class="card-head">
+  <details class="card fold" id="horizon-card" ${wideScreen() ? "open" : ""}>
+    <summary class="card-head fold-head">
       <div><h2>On the horizon</h2>
         <span class="hint">${later.length
           ? `${later.length} task${later.length === 1 ? "" : "s"} waiting · next arrives ${fmtDate(later[0].surfaces)}`
           : "Nothing waiting"}</span>
       </div>
-    </div>
+    </summary>
     ${shown.length ? `
     <div class="table-wrap">
       <table>
@@ -299,7 +316,7 @@ function horizonCard(later, ref) {
       ? `<div class="card-pad muted small">+ ${later.length - shown.length} more, further out. Every course tab has a Later filter.</div>`
       : ""}`
     : `<div class="card-pad muted small">Everything open is active right now.</div>`}
-  </div>`;
+  </details>`;
 }
 
 function courseTable(rows, ref) {
