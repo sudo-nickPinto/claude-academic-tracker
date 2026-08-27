@@ -113,7 +113,7 @@ await page.locator("tbody tr", { hasText: "Playwright smoke task" }).locator(".t
 await page.waitForTimeout(250);
 check("completing removes it from the open filter",
   await page.locator("tbody tr", { hasText: "Playwright smoke task" }).count() === 0);
-await page.selectOption("#f-status", "all");
+await page.click('[data-filter="all"]');
 await page.waitForTimeout(250);
 const doneRow = page.locator("tbody tr", { hasText: "Playwright smoke task" });
 check("completed row stays visible", await doneRow.count() === 1);
@@ -190,26 +190,26 @@ check("horizon card names the next arrival",
 await page.goto(BASE + "/#/course/CS360", { waitUntil: "networkidle" });
 const activeRows = await page.locator("#outlet tbody tr").count();
 check("CS360 defaults to the active filter only", activeRows === 4, `${activeRows} rows`);
-await page.selectOption("#f-status", "later");
+await page.click('[data-filter="later"]');
 await page.waitForTimeout(200);
 const laterRows = await page.locator("#outlet tbody tr").count();
 check("CS360 Later filter holds the rest", laterRows === 14, `${laterRows} rows`);
 check("every Later row is tagged with its surface date",
   await page.locator("#outlet tbody tr .tag-later").count() === laterRows);
-await page.selectOption("#f-status", "all");
+await page.click('[data-filter="all"]');
 await page.waitForTimeout(200);
 check("active + later + done === all",
   await page.locator("#outlet tbody tr").count() === activeRows + laterRows);
 
 // Surface now moves a task into the active list, and it stays there across a reload.
-await page.selectOption("#f-status", "later");
+await page.click('[data-filter="later"]');
 await page.waitForTimeout(200);
 const firstLater = await page.locator("#outlet tbody tr").first().locator(".cell-main").textContent();
 await page.locator("#outlet tbody tr").first().locator(".surface").click();
 await page.waitForTimeout(250);
 check("Surface removes it from Later",
   await page.locator("#outlet tbody tr").count() === laterRows - 1);
-await page.selectOption("#f-status", "active");
+await page.click('[data-filter="active"]');
 await page.waitForTimeout(200);
 check("Surface adds it to Active",
   await page.locator("#outlet tbody tr").count() === activeRows + 1);
@@ -219,12 +219,11 @@ check("surfaced task survives a reload",
   await page.locator("tbody tr", { hasText: firstLater.trim() }).count() === 1);
 
 // Marking a Later task In Progress surfaces it without any explicit override.
-await page.selectOption("#f-status", "later");
+await page.click('[data-filter="later"]');
 await page.waitForTimeout(200);
 const laterBefore = await page.locator("#outlet tbody tr").count();
 await page.locator("#outlet tbody tr").first().locator(".edit").click();
 await page.waitForTimeout(200);
-await page.selectOption("#f-status", "In Progress").catch(() => {});
 await page.selectOption("#task-dialog #f-status", "In Progress");
 await page.click("#task-form button[type=submit]");
 await page.waitForTimeout(250);
@@ -367,6 +366,191 @@ await mpage.waitForTimeout(350);
 check("mobile nav drawer opens",
   await mpage.evaluate(() => document.getElementById("app").dataset.nav === "open"));
 await mpage.screenshot({ path: `${SHOT}/mobile-nav.png` });
+
+// ----------------------------------------------------------------- quick edit
+// Deliberately the last section. It creates rows and deletes them again, and every
+// earlier assertion counts what is on screen — inserting this above them shifts
+// the Active/Later/horizon totals the rest of the file hardcodes.
+const QE_DUE = shiftDays(5);
+
+const qeStored = (name) => page.evaluate((n) => {
+  const s = JSON.parse(localStorage.getItem("academic-tracker/v1"));
+  return s.tasks.CS391.find((t) => t.task === n) || null;
+}, name);
+
+const qeAdd = async (name) => {
+  await page.click("#add-task");
+  await page.fill("#f-task", name);
+  await page.fill("#f-due", QE_DUE);
+  await page.fill("#f-est", "60");
+  await page.selectOption("#f-priority", "Medium");
+  await page.selectOption("#task-dialog #f-status", "Not Started");
+  await page.click("#task-form button[type=submit]");
+  await page.waitForTimeout(200);
+};
+
+// Toasts are fixed to a corner and stack; clearing them between steps keeps a
+// stale Undo button from being the one a later click lands on.
+const qeClearToasts = async () => {
+  await page.evaluate(() => document.querySelectorAll(".toast-close").forEach((b) => b.click()));
+  await page.waitForTimeout(150);
+};
+
+await page.goto(BASE + "/#/course/CS391", { waitUntil: "networkidle" });
+await page.click('[data-filter="active"]');
+await page.waitForTimeout(200);
+await qeAdd("QE smoke task");
+
+const qeRow = page.locator("tbody tr", { hasText: "QE smoke task" });
+// Every editable cell has a folded twin inside the main cell for narrow layouts,
+// so a bare [data-qe] matches twice. Only one of the pair is ever displayed.
+const qeCell = (field) => qeRow.locator(`[data-qe="${field}"]:visible`);
+const qeText = async (field) => (await qeCell(field).textContent()).trim();
+
+// --- the popover opens focused on the current value, and Escape changes nothing
+await qeCell("priority").click();
+await page.waitForTimeout(200);
+check("quick-edit popover opens", (await page.locator("#pop .pop-item").count()) > 0);
+const qeFocused = await page.evaluate(() => document.activeElement?.dataset?.value);
+check("the current value is the focused option", qeFocused === "Medium", `focused=${qeFocused}`);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+check("Escape closes the popover", (await page.locator("#pop .pop-item").count()) === 0);
+check("Escape leaves the value alone", (await qeStored("QE smoke task")).priority === "Medium");
+
+// --- picking a value writes it through and repaints the cell in place
+await qeCell("priority").click();
+await page.waitForTimeout(200);
+await page.click('#pop .pop-item[data-value="High"]');
+await page.waitForTimeout(250);
+check("picking a value writes it to the store",
+  (await qeStored("QE smoke task")).priority === "High");
+check("the cell repaints without a re-render", (await qeText("priority")) === "High");
+
+// --- and the toast undoes exactly that one edit
+check("an edit raises an undo toast", (await page.locator(".toast-action").count()) === 1);
+await page.click(".toast-action");
+await page.waitForTimeout(300);
+check("undo restores the previous value",
+  (await qeStored("QE smoke task")).priority === "Medium");
+check("undo repaints the cell too", (await qeText("priority")) === "Medium");
+await qeClearToasts();
+
+// --- an edit survives a reload
+await qeCell("priority").click();
+await page.waitForTimeout(200);
+await page.click('#pop .pop-item[data-value="High"]');
+await page.waitForTimeout(250);
+await qeClearToasts();
+await page.reload({ waitUntil: "networkidle" });
+await page.waitForTimeout(300);
+check("the inline edit survives a reload", (await qeText("priority")) === "High");
+
+// --- a date edit repaints the derived cells beside it
+await qeCell("due").click();
+await page.waitForTimeout(200);
+await page.fill("#pop-input", shiftDays(3));
+await page.click("#pop [data-save]");
+await page.waitForTimeout(300);
+check("an inline due date is stored", (await qeStored("QE smoke task")).due === shiftDays(3));
+check("days-left repaints from the new date",
+  (await qeRow.locator('[data-derived="days"]:visible').textContent()).trim() === "3d",
+  (await qeRow.locator('[data-derived="days"]:visible').textContent()).trim());
+await qeClearToasts();
+
+// --- status carries the completed date with it, both ways
+await qeCell("status").click();
+await page.waitForTimeout(200);
+await page.click('#pop .pop-item[data-value="Done"]');
+await page.waitForTimeout(300);
+check("an inline status edit stamps completed",
+  Boolean((await qeStored("QE smoke task")).completed),
+  String((await qeStored("QE smoke task")).completed));
+check("the row that left the filter stays put",
+  (await page.locator("tbody tr", { hasText: "QE smoke task" }).count()) === 1);
+check("and says where it is going",
+  (await qeRow.locator(".stale-cue").count()) === 1,
+  await qeRow.getAttribute("data-stale"));
+await qeClearToasts();
+
+await qeCell("status").click();
+await page.waitForTimeout(200);
+await page.click('#pop .pop-item[data-value="In Progress"]');
+await page.waitForTimeout(300);
+check("leaving Done clears the completed date",
+  (await qeStored("QE smoke task")).completed === null);
+check("the stale cue clears with it", (await qeRow.locator(".stale-cue").count()) === 0);
+await qeClearToasts();
+
+// --- the dashboard edits the same row, and keeps it on screen when it drops out
+await page.goto(BASE + "/#/dashboard", { waitUntil: "networkidle" });
+await page.waitForTimeout(250);
+const dashRow = page.locator("tbody tr", { hasText: "QE smoke task" });
+check("the task reaches the dashboard week table", (await dashRow.count()) === 1);
+await dashRow.locator('[data-qe="status"]:visible').click();
+await page.waitForTimeout(200);
+await page.click('#pop .pop-item[data-value="Done"]');
+await page.waitForTimeout(300);
+check("a dashboard edit writes through", (await qeStored("QE smoke task")).status === "Done");
+check("the completed row stays on the dashboard", (await dashRow.count()) === 1);
+check("marked as leaving the list", (await dashRow.locator(".stale-cue").count()) === 1,
+  await dashRow.getAttribute("data-stale"));
+await page.click(".toast-action");
+await page.waitForTimeout(300);
+check("undo works from the dashboard too",
+  (await qeStored("QE smoke task")).status === "In Progress");
+await qeClearToasts();
+
+// --- bulk select: one write, one undo, however many rows
+await page.goto(BASE + "/#/course/CS391", { waitUntil: "networkidle" });
+await page.click('[data-filter="active"]');
+await page.waitForTimeout(200);
+await qeAdd("QE bulk one");
+await qeAdd("QE bulk two");
+
+await page.click("#select-mode");
+await page.waitForTimeout(200);
+await page.locator("tbody tr", { hasText: "QE bulk one" }).locator(".toggle").click();
+await page.locator("tbody tr", { hasText: "QE bulk two" }).locator(".toggle").click();
+await page.waitForTimeout(250);
+check("the bulk bar counts the selection",
+  (await page.locator("#bulkbar .bulk-count").textContent()).includes("2 selected"),
+  await page.locator("#bulkbar .bulk-count").textContent());
+
+await page.click('#bulkbar [data-act="done"]');
+await page.waitForTimeout(350);
+const bulkDone = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem("academic-tracker/v1"));
+  return s.tasks.CS391.filter((t) => t.task?.startsWith("QE bulk")).map((t) => t.status);
+});
+check("bulk mark-done writes every selected row",
+  bulkDone.length === 2 && bulkDone.every((s) => s === "Done"), bulkDone.join(", "));
+
+await page.click(".toast-action");
+await page.waitForTimeout(350);
+const bulkUndone = await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem("academic-tracker/v1"));
+  return s.tasks.CS391.filter((t) => t.task?.startsWith("QE bulk")).map((t) => t.status);
+});
+check("one undo reverts the whole batch",
+  bulkUndone.length === 2 && bulkUndone.every((s) => s === "Not Started"), bulkUndone.join(", "));
+await page.click("#select-mode");
+await qeClearToasts();
+
+// --- put CS391 back the way it was found
+for (const name of ["QE smoke task", "QE bulk one", "QE bulk two"]) {
+  await page.click('[data-filter="all"]');
+  await page.waitForTimeout(200);
+  await page.locator("tbody tr", { hasText: name }).locator(".edit").click();
+  page.once("dialog", (d) => d.accept());
+  await page.click("#f-delete");
+  await page.waitForTimeout(250);
+}
+check("quick-edit fixtures cleaned up", (await page.evaluate(() => {
+  const s = JSON.parse(localStorage.getItem("academic-tracker/v1"));
+  return s.tasks.CS391.filter((t) => t.task?.startsWith("QE ")).length;
+})) === 0);
+
 
 await browser.close();
 
