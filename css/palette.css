@@ -152,3 +152,20 @@
   }
   #palette-dialog { margin-top: var(--sp-4); max-height: 80vh; }
 }
+
+/* Appended by js/ui/palette.js: neither selector existed for what the module
+   renders. A task name is free text with no guaranteed spaces — one long enough
+   word would push .palette-item-main past its flex basis and, since only
+   .palette-item-sub carries text-overflow here, widen the dialog instead of
+   wrapping or truncating. min-width: 0 alone (already on .palette-item-main)
+   stops that only when there's a break opportunity; this covers the unbroken
+   case without touching the rule above it. */
+.palette-item-main { overflow-wrap: anywhere; }
+
+/* The empty-results row ("No matches"): quiet by design, so it borrows the
+   same horizontal padding as .palette-item instead of sitting flush left. */
+.palette-empty {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--step--1);
+  color: var(--text-faint);
+}

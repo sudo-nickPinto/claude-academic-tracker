@@ -2,6 +2,7 @@ import { courseIds, courses, scheduleCourses } from "./config.js";
 import { load, subscribe } from "./store.js";
 import { courseTasks, isDone, isNamed } from "./compute.js";
 import { esc, openDialog } from "./ui.js";
+import { openPalette, closePalette, isPaletteOpen } from "./ui/palette.js";
 
 import { renderDashboard } from "./views/dashboard.js";
 import { renderCalendar } from "./views/calendar.js";
@@ -146,6 +147,37 @@ navToggle.addEventListener("click", () => setNav(app.dataset.nav !== "open"));
 document.querySelector("[data-nav-close]").addEventListener("click", () => setNav(false));
 document.getElementById("open-help").addEventListener("click", () => {
   openDialog(document.getElementById("help-dialog"));
+});
+
+// ---------------------------------------------------------------- shortcuts
+
+/** True while the keystroke belongs to something the user is typing into. */
+const isTyping = (el) =>
+  el instanceof HTMLElement
+  && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+
+// The app's first global keydown handler. Everything before this was per-element,
+// which is why there was nowhere to hang a shortcut.
+document.addEventListener("keydown", (e) => {
+  if (e.altKey) return;
+
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (isPaletteOpen()) closePalette();
+    else openPalette();
+    return;
+  }
+
+  if (e.metaKey || e.ctrlKey) return;
+
+  // Bare keys only fire when you aren't typing — otherwise "?" in a search box
+  // would open the help panel instead of appearing in the box.
+  if (isTyping(document.activeElement)) return;
+
+  if (e.key === "?") {
+    e.preventDefault();
+    openDialog(document.getElementById("help-dialog"));
+  }
 });
 
 render();

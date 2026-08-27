@@ -197,7 +197,7 @@ select:disabled { cursor: not-allowed; }
 
 /* A row whose edit moved it out of its bucket stays put until the next render
    (so the thing you just clicked doesn't vanish under the cursor) and says so. */
-tr[data-stale] { opacity: 0.75; }
+[data-stale] { opacity: 0.75; }
 .stale-cue {
   display: inline-block;
   margin-left: var(--sp-2);
@@ -232,3 +232,8 @@ tr[data-stale] { opacity: 0.75; }
     scroll-behavior: auto !important;
   }
 }
+
+/* A wrapper that exists only so a repaint has something to write into. It must not
+   introduce a box of its own: the Later tag is display:block and sits directly among
+   the inline spans of the main cell. */
+[data-derived="later"] { display: contents; }

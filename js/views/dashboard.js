@@ -2,12 +2,13 @@ import { courses } from "../config.js";
 import { load, update } from "../store.js";
 import {
   today, dashboardStats, perCourse, upcoming, workload14, horizonList, hasCalendar,
-  daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf,
+  daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf, isDone,
 } from "../compute.js";
 import {
-  esc, fmtDate, fmtDateFull, fmtHours, fmtPct, pill, bar, daysLabel, weekday, emptyState,
+  esc, fmtDate, fmtDateFull, fmtHours, fmtPct, bar, daysLabel, weekday, emptyState,
 } from "../ui.js";
 import { barChartH, barChartV, donut } from "../charts.js";
+import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
 
 export function renderDashboard(outlet) {
   const state = load();
@@ -60,6 +61,25 @@ export function renderDashboard(outlet) {
     update((draft) => { draft.prefs.includePersonalInWeek = on; });
     renderDashboard(outlet);
   });
+
+  // Edits repaint their own row and the stat tiles above it. Deliberately not a full
+  // re-render: that would drop the row being edited out of the card mid-interaction,
+  // and it is the whole reason this view was documented as read-only until now.
+  mountQuickEdit(outlet, {
+    onEdited: ({ task }) => {
+      refreshWeekRow(outlet, task, ref);
+      refreshStats(outlet, ref);
+    },
+  });
+}
+
+/** Rewrite the tiles in place. They are pure output — nothing in them holds focus. */
+function refreshStats(outlet, ref) {
+  const grid = outlet.querySelector(".stat-grid");
+  if (!grid) return;
+  const fresh = document.createElement("div");
+  fresh.innerHTML = statGrid(dashboardStats(load(), ref));
+  grid.innerHTML = fresh.firstElementChild.innerHTML;
 }
 
 function statGrid(s) {
@@ -109,28 +129,83 @@ function weekCard(week, ref, includePersonal) {
         <tbody>
           ${week.map((t) => {
             const left = daysLeft(t, ref);
-            const start = startBy(t);
             return `
-            <tr data-state="${rowState(t, ref)}">
+            <tr data-state="${rowState(t, ref)}" data-id="${esc(t.id)}" data-list="${esc(t.course)}">
               <td class="nowrap" data-cell="check"><span class="chip" style="--accent:var(--c-${t.course})">${esc(t.course)}</span></td>
               <td data-cell="main">
                 <span class="cell-main">${esc(t.task)}</span>
                 ${t.type ? `<span class="cell-sub faint">${esc(t.type)}</span>` : ""}
-                <span class="cell-fold" data-when="t1">${start ? `Start by ${fmtDate(start)}` : "No start date"} · ${t.estMin ? `${t.estMin}m` : "—"} est</span>
-                <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span>
+                <span class="cell-fold" data-when="t1" data-derived="fold">${foldLine(t)}</span>
+                <span class="cell-fold cell-fold-inline" data-when="t3">${qe(t.course, t, "priority")}</span>
               </td>
-              <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
-              <td data-label="Status">${pill(t.status)}</td>
-              <td class="num nowrap" data-label="Due">${weekday(t.due)} ${fmtDate(t.due)}</td>
-              <td class="num nowrap days-left" data-neg="${left < 0}" data-label="Days left">${daysLabel(left)}</td>
-              <td class="num nowrap" data-col="t1" data-label="Est.">${t.estMin ? `${t.estMin}m` : "—"}</td>
-              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}" data-col="t1" data-label="Start by">${start ? fmtDate(start) : "—"}</td>
+              <td data-col="t3" data-label="Priority">${qe(t.course, t, "priority")}</td>
+              <td data-label="Status">${qe(t.course, t, "status")}</td>
+              <td class="num nowrap" data-label="Due">${qe(t.course, t, "due", { fmt: "weekday" })}</td>
+              <td class="num nowrap days-left" data-neg="${left < 0}" data-label="Days left" data-derived="days">${daysLabel(left)}</td>
+              <td class="num nowrap" data-col="t1" data-label="Est.">${qe(t.course, t, "estMin")}</td>
+              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}" data-col="t1" data-label="Start by" data-derived="startby">${startLabel(t)}</td>
             </tr>`;
           }).join("")}
         </tbody>
       </table>
     </div>` : emptyState("Nothing overdue and nothing due this week.", "Enjoy it.")}
   </div>`;
+}
+
+/**
+ * The two derived strings a week row shows, kept in functions because a quick edit has
+ * to be able to reproduce them without re-rendering the card. Anything editable is a
+ * `qe()` trigger and repaints itself; anything computed from an edited field — the
+ * start-by date, days left, the folded summary line — is repainted here.
+ */
+const foldLine = (t) => {
+  const start = startBy(t);
+  return `${start ? `Start by ${fmtDate(start)}` : "No start date"} · ${t.estMin ? `${t.estMin}m` : "—"} est`;
+};
+
+const startLabel = (t) => {
+  const start = startBy(t);
+  return start ? fmtDate(start) : "—";
+};
+
+/** Still overdue-or-within-seven-days, i.e. does this row still belong in the card? */
+const inWeek = (t, ref) => {
+  if (isDone(t) || !t.due) return false;
+  const left = daysLeft(t, ref);
+  return left < 0 || left <= 7;
+};
+
+/**
+ * Repaint one week row after a quick edit.
+ *
+ * A row that no longer qualifies for the card is *not* removed — see `markStale` in
+ * js/views/row.js. Marking a task Done from the dashboard is the common case, and
+ * having the row vanish under the cursor moves every row below it up by one.
+ */
+function refreshWeekRow(outlet, task, ref) {
+  const tr = outlet.querySelector(`tr[data-id="${CSS.escape(task.id)}"]`);
+  if (!tr) return;
+
+  const left = daysLeft(task, ref);
+  const days = tr.querySelector('[data-derived="days"]');
+  if (days) {
+    days.textContent = daysLabel(left);
+    days.dataset.neg = String(left !== null && left < 0);
+  }
+
+  const startCell = tr.querySelector('[data-derived="startby"]');
+  if (startCell) {
+    startCell.textContent = startLabel(task);
+    startCell.classList.toggle("start-flag", shouldHaveStarted(task, ref));
+  }
+
+  const fold = tr.querySelector('[data-derived="fold"]');
+  if (fold) fold.textContent = foldLine(task);
+
+  tr.dataset.state = rowState(task, ref);
+
+  if (inWeek(task, ref)) clearStale(tr);
+  else markStale(tr, isDone(task) ? "done — leaves this list" : "moves out of this week");
 }
 
 function sideColumn(days, horizon, ref, withCal) {
