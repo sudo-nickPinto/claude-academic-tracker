@@ -56,7 +56,7 @@ for (const route of COURSES) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${BASE}/${route}`, { waitUntil: "networkidle" });
     await page.selectOption("#f-sort", "manual");
-    await page.selectOption("#f-status", "all");
+    await page.click('[data-filter="all"]');
     await page.waitForTimeout(150);
     const m = await page.evaluate(() => {
       const doc = document.documentElement.scrollWidth - document.documentElement.clientWidth;

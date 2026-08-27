@@ -1,14 +1,31 @@
 import { courses } from "../config.js";
-import { load, update } from "../store.js";
+import { load, undo, update } from "../store.js";
 import {
   today, daysLeft, startBy, realisticStart, rowState, shouldHaveStarted, isDone, isNamed,
   isLater, surfacesOn, horizonOf, hasCalendar, byDue, byOrder, sortModeOf, reorderCourse,
 } from "../compute.js";
-import { esc, fmtDate, fmtHours, fmtPct, pill, bar, daysLabel, emptyState } from "../ui.js";
-import { openTaskDialog, toggleDone, surfaceNow } from "./taskdialog.js";
+import { esc, fmtDate, fmtHours, fmtPct, bar, daysLabel, emptyState } from "../ui.js";
+import { openTaskDialog } from "./taskdialog.js";
+import { toggleDone, surfaceNow, patchMany, editableFields, FIELD_SPEC } from "../tasks.js";
+import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
+import { showBulkBar, hideBulkBar } from "../ui/bulkbar.js";
+import { toastUndo } from "../ui/toast.js";
 import { sortableRows } from "../dnd.js";
 
 const filters = {};
+
+/**
+ * Bulk selection state.
+ *
+ * The row checkbox does double duty rather than a second column appearing: an extra
+ * <td> would shift every cell index after it, and the table already folds three
+ * columns away by 700px — a permanent select column would be the first thing
+ * competing for that space. In select mode the same checkbox means "selected"
+ * instead of "done", which is also why the mode has to be explicit and visible.
+ */
+let selectMode = false;
+let selected = new Set();
+let selectionFor = null;
 
 const MATCHERS = {
   active: (t, ref, h) => !isDone(t) && !isLater(t, ref, h),
@@ -17,7 +34,40 @@ const MATCHERS = {
   all: () => true,
 };
 
+const FILTERS = [
+  { key: "active", label: "Active now" },
+  { key: "later", label: "Later" },
+  { key: "all", label: "All" },
+  { key: "done", label: "Completed" },
+];
+
+/**
+ * The filter, as a row of chips rather than a dropdown.
+ *
+ * A `<select>` hid three of the four counts behind a click — you could not see that
+ * fourteen tasks were waiting in Later without opening it. The chips show every count
+ * at once and cost one click instead of three, and they wrap rather than forcing a
+ * minimum width on the toolbar, which a native select does.
+ */
+function chipRow(f, counts) {
+  return `
+  <div class="chip-row" role="group" aria-label="Filter tasks">
+    ${FILTERS.map(({ key, label }) => `
+      <button type="button" class="chip-filter" data-filter="${key}"
+              aria-pressed="${f.status === key}">
+        ${esc(label)}<span class="chip-count">${counts[key]}</span>
+      </button>`).join("")}
+  </div>`;
+}
+
 export function renderCourse(outlet, id) {
+  // A selection means nothing on a course you are no longer looking at.
+  if (selectionFor !== id) {
+    selectionFor = id;
+    selectMode = false;
+    selected = new Set();
+  }
+
   const state = load();
   const info = courses[id];
   const all = state.tasks[id].filter(isNamed);
@@ -66,18 +116,22 @@ export function renderCourse(outlet, id) {
     </div>
 
     <div class="toolbar">
-      <select id="f-status" style="width:auto">
-        <option value="active" ${f.status === "active" ? "selected" : ""}>Active now</option>
-        <option value="later" ${f.status === "later" ? "selected" : ""}>Later (${later.length})</option>
-        <option value="all" ${f.status === "all" ? "selected" : ""}>All tasks</option>
-        <option value="done" ${f.status === "done" ? "selected" : ""}>Completed</option>
-      </select>
+      ${chipRow(f, {
+        active: active.length,
+        later: later.length,
+        all: all.length,
+        done: all.length - open.length,
+      })}
       <input id="f-q" type="text" placeholder="Search tasks…" value="${esc(f.q)}" style="width:auto;flex:1 1 200px">
       <select id="f-sort" style="width:auto" aria-label="Order the list by">
         <option value="due" ${mode === "due" ? "selected" : ""}>Order: by due date</option>
         <option value="manual" ${mode === "manual" ? "selected" : ""}>Order: mine</option>
       </select>
       <span class="spacer"></span>
+      <button class="btn btn-sm" type="button" id="select-mode" aria-pressed="${selectMode}"
+              title="Use the row checkboxes to select tasks instead of completing them">
+        ${selectMode ? "Done selecting" : "Select"}
+      </button>
       <span class="small faint">${visible.length} shown</span>
     </div>
 
@@ -87,7 +141,7 @@ export function renderCourse(outlet, id) {
       filter stays where it is.</p>` : ""}
     <p class="sr" role="status" aria-live="polite" id="reorder-status"></p>
 
-    ${visible.length ? table(visible, ref, horizon, state, withCal, mode) : emptyState(
+    ${visible.length ? table(id, visible, ref, horizon, state, withCal, mode) : emptyState(
       emptyHeadline(f, later.length),
       f.q ? "" : "Add one with the New task button.")}`;
 
@@ -103,7 +157,7 @@ function emptyHeadline(f, laterCount) {
     : "No open tasks — you're clear.";
 }
 
-function table(rows, ref, horizon, state, withCal, mode) {
+function table(listKey, rows, ref, horizon, state, withCal, mode) {
   return `
   <div class="table-wrap" data-sort="${mode}">
     <table>
@@ -122,43 +176,59 @@ function table(rows, ref, horizon, state, withCal, mode) {
           <th style="width:52px"></th>
         </tr>
       </thead>
-      <tbody>${rows.map((t) => row(t, ref, horizon, state, withCal, mode)).join("")}</tbody>
+      <tbody>${rows.map((t) => row(listKey, t, ref, horizon, state, withCal, mode)).join("")}</tbody>
     </table>
   </div>`;
 }
 
-function row(t, ref, horizon, state, withCal, mode) {
-  const left = daysLeft(t, ref);
+/** The half of a row that any edit can change, extracted so `refreshRow` can rebuild it. */
+function foldLine(t) {
+  const start = startBy(t);
+  const est = t.estMin ? `${t.estMin}m` : "\u2014";
+  return `${start ? `Start by ${fmtDate(start)}` : "No start date"} \u00b7 ${est} est`;
+}
+
+function startCell(t, state, ref, withCal) {
   const start = startBy(t);
   const real = withCal ? realisticStart(t, state, ref) : null;
+  return `${start ? fmtDate(start) : "\u2014"}
+      ${real && real !== start ? `<span class="cell-sub faint" title="Allowing for the time already committed on your calendar">cal. ${fmtDate(real)}</span>` : ""}`;
+}
+
+function laterTag(t, horizon) {
+  const surfaces = surfacesOn(t, horizon);
+  return `<span class="tag tag-later">Later \u00b7 surfaces ${fmtDate(surfaces)}${t.activeFrom ? " (you set this)" : ""}</span>`;
+}
+
+function row(listKey, t, ref, horizon, state, withCal, mode) {
+  const left = daysLeft(t, ref);
   const late = shouldHaveStarted(t, ref);
   const later = isLater(t, ref, horizon);
-  const surfaces = later ? surfacesOn(t, horizon) : null;
-  const est = t.estMin ? `${t.estMin}m` : "\u2014";
 
   return `
   <tr data-state="${later ? "later" : rowState(t, ref)}" data-id="${t.id}" data-later="${later}">
     ${mode === "manual" ? `<td data-cell="grip"><button class="grip" type="button"
       aria-label="Reorder ${esc(t.task)}"
       title="Drag to move this row, or use the arrow keys">⠿</button></td>` : ""}
-    <td data-cell="check"><input type="checkbox" class="toggle" ${isDone(t) ? "checked" : ""} aria-label="Mark ${esc(t.task)} done"></td>
+    <td data-cell="check"><input type="checkbox" class="toggle checkbox" ${
+      (selectMode ? selected.has(t.id) : isDone(t)) ? "checked" : ""
+    } aria-label="${selectMode ? `Select ${esc(t.task)}` : `Mark ${esc(t.task)} done`}"></td>
     <td data-cell="main">
       <span class="cell-main">${esc(t.task)}</span>
-      ${later ? `<span class="tag tag-later">Later \u00b7 surfaces ${fmtDate(surfaces)}${t.activeFrom ? " (you set this)" : ""}</span>` : ""}
+      <span data-derived="later">${later ? laterTag(t, horizon) : ""}</span>
       ${t.details ? `<span class="cell-sub">${esc(t.details)}</span>` : ""}
       ${t.source ? `<span class="cell-sub faint">${esc(t.source)}</span>` : ""}
-      <span class="cell-fold" data-when="t1">${start ? `Start by ${fmtDate(start)}` : "No start date"} \u00b7 ${est} est</span>
-      <span class="cell-fold cell-fold-inline" data-when="t2"><span class="tag">${esc(t.type)}</span></span>
-      <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span>
+      <span class="cell-fold" data-when="t1" data-derived="fold">${foldLine(t)}</span>
+      <span class="cell-fold cell-fold-inline" data-when="t2">${qe(listKey, t, "type")}</span>
+      <span class="cell-fold cell-fold-inline" data-when="t3">${qe(listKey, t, "priority")}</span>
     </td>
-    <td data-col="t2" data-label="Type"><span class="tag">${esc(t.type)}</span></td>
-    <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
-    <td data-label="Status">${pill(t.status)}</td>
-    <td class="num nowrap" data-label="Due">${fmtDate(t.due)}</td>
-    <td class="num nowrap days-left" data-neg="${left !== null && left < 0}" data-label="Days left">${daysLabel(left)}</td>
-    <td class="num nowrap" data-col="t1" data-label="Est.">${est}</td>
-    <td class="num nowrap ${late ? "start-flag" : ""}" data-col="t1" data-label="Start by">${start ? fmtDate(start) : "\u2014"}
-      ${real && real !== start ? `<span class="cell-sub faint" title="Allowing for the time already committed on your calendar">cal. ${fmtDate(real)}</span>` : ""}</td>
+    <td data-col="t2" data-label="Type">${qe(listKey, t, "type")}</td>
+    <td data-col="t3" data-label="Priority">${qe(listKey, t, "priority")}</td>
+    <td data-label="Status">${qe(listKey, t, "status")}</td>
+    <td class="num nowrap" data-label="Due">${qe(listKey, t, "due")}</td>
+    <td class="num nowrap days-left" data-neg="${left !== null && left < 0}" data-label="Days left" data-derived="days">${daysLabel(left)}</td>
+    <td class="num nowrap" data-col="t1" data-label="Est.">${qe(listKey, t, "estMin")}</td>
+    <td class="num nowrap ${late ? "start-flag" : ""}" data-col="t1" data-label="Start by" data-derived="startby">${startCell(t, state, ref, withCal)}</td>
     <td class="nowrap" data-cell="act">
       ${later ? '<button class="btn btn-ghost btn-sm surface" type="button" title="Move this into the active list now">Surface</button>' : ""}
       <button class="btn btn-ghost btn-sm edit" type="button">Edit</button>
@@ -166,15 +236,86 @@ function row(t, ref, horizon, state, withCal, mode) {
   </tr>`;
 }
 
+/**
+ * Repaint everything in one row that an edit can have changed but that isn't itself
+ * editable: the derived dates, the Later tag and its Surface button, the row's urgency
+ * state, and — when the edit has pushed the task out of the filter you are looking at —
+ * the cue saying so.
+ */
+function refreshRow(outlet, listKey, task, f, rerender) {
+  const tr = outlet.querySelector(`tbody tr[data-id="${CSS.escape(task.id)}"]`);
+  if (!tr) return;
+
+  // Read the state fresh rather than closing over the render's copy: an edit is the
+  // one moment the two are guaranteed to differ.
+  const state = load();
+  const ref = today();
+  const horizon = horizonOf(state);
+  const withCal = hasCalendar(state);
+  const left = daysLeft(task, ref);
+  const later = isLater(task, ref, horizon);
+
+  const days = tr.querySelector('[data-derived="days"]');
+  if (days) {
+    days.textContent = daysLabel(left);
+    days.dataset.neg = String(left !== null && left < 0);
+  }
+
+  const startTd = tr.querySelector('[data-derived="startby"]');
+  if (startTd) {
+    startTd.innerHTML = startCell(task, state, ref, withCal);
+    startTd.classList.toggle("start-flag", shouldHaveStarted(task, ref));
+  }
+
+  const fold = tr.querySelector('[data-derived="fold"]');
+  if (fold) fold.textContent = foldLine(task);
+
+  const tag = tr.querySelector('[data-derived="later"]');
+  if (tag) tag.innerHTML = later ? laterTag(task, horizon) : "";
+
+  tr.dataset.state = later ? "later" : rowState(task, ref);
+  tr.dataset.later = String(later);
+  // In select mode the checkbox means "selected", so a quick edit must not
+  // reset it to the task's done state.
+  tr.querySelector(".toggle").checked = selectMode ? selected.has(task.id) : isDone(task);
+
+  // Surface only exists on a Later row, so it appears and disappears with one.
+  const act = tr.querySelector('[data-cell="act"]');
+  const hasSurface = Boolean(tr.querySelector(".surface"));
+  if (later && !hasSurface) {
+    act.insertAdjacentHTML("afterbegin",
+      '<button class="btn btn-ghost btn-sm surface" type="button" title="Move this into the active list now">Surface</button>');
+    tr.querySelector(".surface").addEventListener("click", () => {
+      surfaceNow(listKey, task.id);
+      rerender();
+    });
+  } else if (!later && hasSurface) {
+    tr.querySelector(".surface").remove();
+  }
+
+  const matches = (MATCHERS[f.status] || MATCHERS.all)(task, ref, horizon);
+  if (matches) clearStale(tr);
+  else markStale(tr, `no longer matches “${FILTER_NAMES[f.status] || f.status}”`);
+}
+
+const FILTER_NAMES = {
+  active: "Active now",
+  later: "Later",
+  all: "All tasks",
+  done: "Completed",
+};
+
 function wire(outlet, id, f, mode) {
   const rerender = () => renderCourse(outlet, id);
 
   outlet.querySelector("#add-task").addEventListener("click", () =>
     openTaskDialog(id, null, rerender));
 
-  outlet.querySelector("#f-status").addEventListener("change", (e) => {
-    f.status = e.target.value;
-    rerender();
+  outlet.querySelectorAll("[data-filter]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      f.status = chip.dataset.filter;
+      rerender();
+    });
   });
 
   outlet.querySelector("#f-sort").addEventListener("change", (e) => {
@@ -192,9 +333,21 @@ function wire(outlet, id, f, mode) {
     next.setSelectionRange(next.value.length, next.value.length);
   });
 
+  outlet.querySelector("#select-mode").addEventListener("click", () => {
+    selectMode = !selectMode;
+    selected = new Set();
+    rerender();
+  });
+
   outlet.querySelectorAll("tbody tr").forEach((tr) => {
     const taskId = tr.dataset.id;
-    tr.querySelector(".toggle").addEventListener("change", () => {
+    tr.querySelector(".toggle").addEventListener("change", (e) => {
+      if (selectMode) {
+        if (e.target.checked) selected.add(taskId);
+        else selected.delete(taskId);
+        paintBulkBar(outlet, id, rerender);
+        return;
+      }
       toggleDone(id, taskId);
       rerender();
     });
@@ -207,6 +360,12 @@ function wire(outlet, id, f, mode) {
       rerender();
     });
   });
+
+  mountQuickEdit(outlet, {
+    onEdited: ({ task }) => refreshRow(outlet, id, task, f, rerender),
+  });
+
+  paintBulkBar(outlet, id, rerender);
 
   if (mode !== "manual") return;
   const body = outlet.querySelector("tbody");
@@ -224,6 +383,45 @@ function wire(outlet, id, f, mode) {
       // Re-rendering replaces the row that was just moved; put the caret back on its
       // handle so a keyboard user can press the arrow key again without re-finding it.
       outlet.querySelector(`tr[data-id="${movedId}"] .grip`)?.focus();
+    },
+  });
+}
+
+/**
+ * Show or hide the bulk bar for the current selection, and apply what it asks for.
+ *
+ * Every bulk write goes through `patchMany`, which is one `update()` — so the whole
+ * batch is a single entry on the undo stack and one Undo puts all of it back. Doing
+ * it as N calls to `patchTask` would need N undos, in order, to get back to where
+ * you were.
+ */
+function paintBulkBar(outlet, listKey, rerender) {
+  if (!selectMode || selected.size === 0) {
+    hideBulkBar();
+    return;
+  }
+
+  const entries = [...selected].map((id) => ({ listKey, id }));
+  const apply = (fields, label) => {
+    const n = patchMany(entries, fields, { undoLabel: label });
+    selected = new Set();
+    rerender();
+    toastUndo(`${label} · ${n} task${n === 1 ? "" : "s"}`, () => {
+      undo();
+      rerender();
+    });
+  };
+
+  showBulkBar({
+    count: selected.size,
+    fields: editableFields(listKey)
+      .filter(([, spec]) => spec.kind === "choice")
+      .map(([field, spec]) => ({ field, label: spec.label, values: spec.values })),
+    onPick: (field, value) => apply({ [field]: value }, `${FIELD_SPEC[field].label} → ${value}`),
+    onDone: () => apply({ status: "Done" }, "Marked done"),
+    onClear: () => {
+      selected = new Set();
+      rerender();
     },
   });
 }

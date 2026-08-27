@@ -112,11 +112,52 @@ export function save(next) {
   return state;
 }
 
-/** Apply a mutation to a draft copy, then persist and notify. */
-export function update(mutator) {
-  const draft = structuredClone(load());
+/**
+ * Snapshots of the state as it was before an undoable write, newest last.
+ *
+ * This costs nothing extra: `update` already deep-clones the current state to build
+ * its draft, and only ever mutates that clone, so the pre-write object is already
+ * immutable in practice and simply unreferenced after `save`. Keeping it is a
+ * deferred garbage collection, not a second copy.
+ */
+const undoStack = [];
+const UNDO_LIMIT = 20;
+
+/**
+ * Apply a mutation to a draft copy, then persist and notify.
+ *
+ * Pass `undoLabel` to make the write undoable. Ambient writes — theme, the
+ * include-personal toggle, a calendar import — deliberately don't, so the stack only
+ * ever holds things a person would recognise as an action they took.
+ */
+export function update(mutator, { undoLabel } = {}) {
+  const prev = load();
+  const draft = structuredClone(prev);
   mutator(draft);
+  if (undoLabel) {
+    undoStack.push({ label: undoLabel, state: prev, at: Date.now() });
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  }
   return save(draft);
+}
+
+export const undoDepth = () => undoStack.length;
+export const canUndo = () => undoStack.length > 0;
+export const lastUndoLabel = () => (undoStack.at(-1)?.label ?? null);
+
+/**
+ * Restore the snapshot taken before the most recent undoable write.
+ *
+ * There is no redo: undoing does not itself push. The stack is LIFO over whole-state
+ * snapshots, so undoing after two further edits would silently revert those too —
+ * callers guard against that by capturing `undoDepth()` when they offer the undo and
+ * checking it still matches before calling this.
+ */
+export function undo() {
+  const entry = undoStack.pop();
+  if (!entry) return null;
+  save(entry.state);
+  return entry;
 }
 
 export function subscribe(fn) {

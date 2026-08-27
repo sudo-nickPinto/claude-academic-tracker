@@ -5,6 +5,7 @@ import {
   eventsOn, busyMinutes, hasCalendar, semesterWindow, committedByDate, freeHours,
 } from "../compute.js";
 import { esc, fmtDateFull, fmtHours, emptyState } from "../ui.js";
+import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -164,10 +165,11 @@ function dayDetail(state, date, ref) {
           <h3 class="cal-sub">Due</h3>
           <ul class="cal-list">
             ${due.map((t) => `
-              <li>
+              <li data-id="${esc(t.id)}" data-list="${esc(t.label)}">
                 <span class="chip" style="--accent:${t.accent}">${esc(t.label)}</span>
-                <span class="cal-ev">${esc(t.task)}</span>
-                <span class="cal-len">${t.estMin ? `${t.estMin}m` : "—"}</span>
+                <span class="cal-ev">${esc(t.task)}
+                  <span class="cell-sub">${qe(t.label, t, "status")} ${qe(t.label, t, "priority")}</span></span>
+                <span class="cal-len">${qe(t.label, t, "estMin")}</span>
               </li>`).join("")}
           </ul>
         </div>` : ""}
@@ -209,5 +211,17 @@ function wire(outlet, y, m, ref) {
       cell.dataset.selected = "true";
       outlet.querySelector("#day-detail").innerHTML = dayDetail(load(), selected, ref);
     });
+  });
+
+  // The day panel is the fourth place task rows appear, so it gets the same editing
+  // the tables do. An edit that empties the day — marking it done, moving the due date —
+  // leaves the item in place with a cue; the month dots catch up on the next render.
+  mountQuickEdit(outlet, {
+    onEdited: ({ task }) => {
+      const li = outlet.querySelector(`.cal-list li[data-id="${CSS.escape(task.id)}"]`);
+      if (!li) return;
+      if (!isDone(task) && task.due === selected) clearStale(li);
+      else markStale(li, isDone(task) ? "done" : "moved to another day");
+    },
   });
 }

@@ -48,9 +48,37 @@ else is context. Personal tasks are excluded from every statistic and chart, and
 list only when you flip the "include personal" toggle.
 
 **Course tabs** (CS440, CS391, CS360, ENG216) are the full task lists — add, edit, complete, delete.
-The checkbox in the first column is the fast path for "I finished this." The filter defaults to
-**Active now**; switch it to **Later** to see what's waiting, and the **Order** control next to it
-switches between due-date order and one you drag yourself.
+The checkbox in the first column is the fast path for "I finished this." The filter chips above the
+table default to **Active now**; each chip carries a live count, and **Later** shows what's waiting.
+The **Order** control next to them switches between due-date order and one you drag yourself.
+
+### Editing anything, anywhere
+
+Priority, status, due date, estimate, type and start-by are editable **directly in the table**, on
+the dashboard, the course tabs, Personal and the calendar's day panel alike. Click a value and a
+small popover opens on it: pick from a list, or type a date or a number. `Esc` cancels, `Enter`
+saves, and the arrow keys move through the options. Only the row you touched repaints, so nothing
+scrolls or jumps under the cursor.
+
+Creating and deleting tasks still happens on a course tab, through the **Add task** / **Edit**
+dialog — those are the two things worth a form.
+
+**Undo.** Every edit raises a toast in the corner with an **Undo** button that reverses the whole
+edit, including the completion date a status change stamped or cleared. It only undoes while it is
+still the most recent change; once you have edited something else, the button stops offering to
+throw that away.
+
+**Rows that no longer belong** — a task you just marked Done while looking at the open list, or one
+whose new due date pushes it past the horizon — stay where they are, greyed, with a note saying
+where they are going. They leave on the next render. The alternative is a row vanishing from under
+the pointer and everything below it jumping up by one.
+
+**Bulk edits.** On a course tab, **Select** turns the first-column checkboxes into a selection. Pick
+rows, then set a priority or status for all of them, or mark the lot done, from the bar at the
+bottom of the screen. The batch is one write, so one Undo reverses all of it.
+
+**Keyboard.** `Cmd/Ctrl + K` opens the command palette — jump to any view or search for a task by
+name. `?` opens the help panel.
 
 ### Active vs Later
 
@@ -219,13 +247,14 @@ git history; type them into the running app if you want them, where they stay in
 
 ## Tests
 
-All four run against the working tree; the last two need a local server on port 8347 and
+All five run against the working tree; the last two need a local server on port 8347 and
 Playwright's chromium.
 
 ```bash
 python3 -m http.server 8347 &          # for the two browser suites
 
 node tools/tests/compute.test.mjs      # pure logic: dates, Start By, Active/Later, grades, committed time
+node tools/tests/tasks.test.mjs        # the write path: coercion, Done <-> completed, per-list schemas
 node tools/tests/ical.test.mjs         # the .ics reader, against a synthetic Outlook export
 node tools/tests/layout.test.mjs       # zero horizontal overflow, 17 passes x 9 widths
 node tools/tests/smoke.test.mjs        # the real app in a real browser, including a calendar import
@@ -241,17 +270,27 @@ index.html               shell + help panel
 css/tokens.css           color, type, spacing tokens (light + dark)
 css/base.css             reset, typography, app layout
 css/components.css       cards, tables, pills, charts, dialogs
+css/controls.css         inputs, focus/disabled states, chips, quick-edit cells
+css/popover.css          the quick-edit popover, in the top layer
+css/toast.css            toasts and the bulk-action bar
+css/palette.css          the command palette
 js/store.js              persistence seam — the only module that knows about localStorage
+js/tasks.js              the one write path: field schemas, coercion, patchTask/patchMany
 js/config.js             dropdown vocabularies, course colors, constants
 js/compute.js            all derived logic; pure functions over plain state
+js/ui/popover.js         click-to-edit popovers and inline editors
+js/ui/toast.js           toasts, and the Undo they carry
+js/ui/palette.js         the Cmd/Ctrl+K command palette
+js/ui/bulkbar.js         the bar that appears when rows are selected
 js/charts.js             hand-rolled SVG bar and donut charts
 js/dnd.js                pointer-driven row reordering — works with a finger, and with arrow keys
 js/ical.js               RFC 5545 reader — unfolding, RRULE/EXDATE expansion, no DOM
 js/seed.js               GENERATED — tasks and grade shells
 js/reference.js          GENERATED — groups roster and both schedules
+js/views/row.js          quick-edit cells + the one controller behind all of them
 js/views/*.js            one module per view
 tools/parse_workbook.py  the migration script
-tools/tests/             the four test suites and the .ics fixture
+tools/tests/             the five test suites and the .ics fixture
 ```
 
 Routing is hash-based (`#/dashboard`, `#/course/CS440`), which needs no server rewrite rules and no

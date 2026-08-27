@@ -2,12 +2,13 @@ import { courses } from "../config.js";
 import { load, update } from "../store.js";
 import {
   today, dashboardStats, perCourse, upcoming, workload14, horizonList, hasCalendar,
-  daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf,
+  daysLeft, startBy, shouldHaveStarted, rowState, analytics, dayDiff, horizonOf, isDone,
 } from "../compute.js";
 import {
-  esc, fmtDate, fmtDateFull, fmtHours, fmtPct, pill, bar, daysLabel, weekday, emptyState,
+  esc, fmtDate, fmtDateFull, fmtHours, fmtPct, bar, daysLabel, weekday, emptyState,
 } from "../ui.js";
 import { barChartH, barChartV, donut } from "../charts.js";
+import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
 
 export function renderDashboard(outlet) {
   const state = load();
@@ -37,13 +38,13 @@ export function renderDashboard(outlet) {
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>By course</h2>
-        <span class="small faint">Personal is excluded from every figure here.</span></div>
-      ${courseTable(byCourse, ref)}
+      ${fold(`<h2>By course</h2>
+        <span class="small faint">Personal is excluded from every figure here.</span>`,
+        courseTable(byCourse, ref))}
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Where the work is</h2></div>
+      ${fold("<h2>Where the work is</h2>", `
       <div class="chart-grid">
         ${chartCard("Active tasks by course", barChartH(byCourse.map((c) => ({
           label: c.course, value: c.active, color: `var(--c-${c.course})`,
@@ -52,7 +53,7 @@ export function renderDashboard(outlet) {
           label: c.course, value: Math.round(c.activeHours * 10) / 10, color: `var(--c-${c.course})`,
         })), { format: (v) => `${fmtHours(v)}h` }))}
         ${chartCard("Status of all coursework", donut(statusRows(state), { centerLabel: "tasks" }))}
-      </div>
+      </div>`)}
     </section>`;
 
   outlet.querySelector("#include-personal")?.addEventListener("change", (e) => {
@@ -60,7 +61,43 @@ export function renderDashboard(outlet) {
     update((draft) => { draft.prefs.includePersonalInWeek = on; });
     renderDashboard(outlet);
   });
+
+  // Edits repaint their own row and the stat tiles above it. Deliberately not a full
+  // re-render: that would drop the row being edited out of the card mid-interaction,
+  // and it is the whole reason this view was documented as read-only until now.
+  mountQuickEdit(outlet, {
+    onEdited: ({ task }) => {
+      refreshWeekRow(outlet, task, ref);
+      refreshStats(outlet, ref);
+    },
+  });
 }
+
+/** Rewrite the tiles in place. They are pure output — nothing in them holds focus. */
+function refreshStats(outlet, ref) {
+  const grid = outlet.querySelector(".stat-grid");
+  if (!grid) return;
+  const fresh = document.createElement("div");
+  fresh.innerHTML = statGrid(dashboardStats(load(), ref));
+  grid.innerHTML = fresh.firstElementChild.innerHTML;
+}
+
+/**
+ * A section that collapses on a phone.
+ *
+ * The mobile dashboard was about 6,300px tall, because every card renders at full
+ * length stacked — you scrolled past three analytic sections to reach anything. The
+ * open state is decided once at render rather than by a media query, because `<details>`
+ * can't be forced open from CSS: on a narrow screen these start closed and the week
+ * card is the whole first screen, on a wide one they behave as they always did.
+ */
+const wideScreen = () => window.matchMedia("(min-width: 621px)").matches;
+
+const fold = (head, body) => `
+  <details class="fold" ${wideScreen() ? "open" : ""}>
+    <summary class="fold-head section-head">${head}</summary>
+    ${body}
+  </details>`;
 
 function statGrid(s) {
   return `
@@ -109,28 +146,83 @@ function weekCard(week, ref, includePersonal) {
         <tbody>
           ${week.map((t) => {
             const left = daysLeft(t, ref);
-            const start = startBy(t);
             return `
-            <tr data-state="${rowState(t, ref)}">
+            <tr data-state="${rowState(t, ref)}" data-id="${esc(t.id)}" data-list="${esc(t.course)}">
               <td class="nowrap" data-cell="check"><span class="chip" style="--accent:var(--c-${t.course})">${esc(t.course)}</span></td>
               <td data-cell="main">
                 <span class="cell-main">${esc(t.task)}</span>
                 ${t.type ? `<span class="cell-sub faint">${esc(t.type)}</span>` : ""}
-                <span class="cell-fold" data-when="t1">${start ? `Start by ${fmtDate(start)}` : "No start date"} · ${t.estMin ? `${t.estMin}m` : "—"} est</span>
-                <span class="cell-fold cell-fold-inline" data-when="t3">${pill(t.priority)}</span>
+                <span class="cell-fold" data-when="t1" data-derived="fold">${foldLine(t)}</span>
+                <span class="cell-fold cell-fold-inline" data-when="t3">${qe(t.course, t, "priority")}</span>
               </td>
-              <td data-col="t3" data-label="Priority">${pill(t.priority)}</td>
-              <td data-label="Status">${pill(t.status)}</td>
-              <td class="num nowrap" data-label="Due">${weekday(t.due)} ${fmtDate(t.due)}</td>
-              <td class="num nowrap days-left" data-neg="${left < 0}" data-label="Days left">${daysLabel(left)}</td>
-              <td class="num nowrap" data-col="t1" data-label="Est.">${t.estMin ? `${t.estMin}m` : "—"}</td>
-              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}" data-col="t1" data-label="Start by">${start ? fmtDate(start) : "—"}</td>
+              <td data-col="t3" data-label="Priority">${qe(t.course, t, "priority")}</td>
+              <td data-label="Status">${qe(t.course, t, "status")}</td>
+              <td class="num nowrap" data-label="Due">${qe(t.course, t, "due", { fmt: "weekday" })}</td>
+              <td class="num nowrap days-left" data-neg="${left < 0}" data-label="Days left" data-derived="days">${daysLabel(left)}</td>
+              <td class="num nowrap" data-col="t1" data-label="Est.">${qe(t.course, t, "estMin")}</td>
+              <td class="num nowrap ${shouldHaveStarted(t, ref) ? "start-flag" : ""}" data-col="t1" data-label="Start by" data-derived="startby">${startLabel(t)}</td>
             </tr>`;
           }).join("")}
         </tbody>
       </table>
     </div>` : emptyState("Nothing overdue and nothing due this week.", "Enjoy it.")}
   </div>`;
+}
+
+/**
+ * The two derived strings a week row shows, kept in functions because a quick edit has
+ * to be able to reproduce them without re-rendering the card. Anything editable is a
+ * `qe()` trigger and repaints itself; anything computed from an edited field — the
+ * start-by date, days left, the folded summary line — is repainted here.
+ */
+const foldLine = (t) => {
+  const start = startBy(t);
+  return `${start ? `Start by ${fmtDate(start)}` : "No start date"} · ${t.estMin ? `${t.estMin}m` : "—"} est`;
+};
+
+const startLabel = (t) => {
+  const start = startBy(t);
+  return start ? fmtDate(start) : "—";
+};
+
+/** Still overdue-or-within-seven-days, i.e. does this row still belong in the card? */
+const inWeek = (t, ref) => {
+  if (isDone(t) || !t.due) return false;
+  const left = daysLeft(t, ref);
+  return left < 0 || left <= 7;
+};
+
+/**
+ * Repaint one week row after a quick edit.
+ *
+ * A row that no longer qualifies for the card is *not* removed — see `markStale` in
+ * js/views/row.js. Marking a task Done from the dashboard is the common case, and
+ * having the row vanish under the cursor moves every row below it up by one.
+ */
+function refreshWeekRow(outlet, task, ref) {
+  const tr = outlet.querySelector(`tr[data-id="${CSS.escape(task.id)}"]`);
+  if (!tr) return;
+
+  const left = daysLeft(task, ref);
+  const days = tr.querySelector('[data-derived="days"]');
+  if (days) {
+    days.textContent = daysLabel(left);
+    days.dataset.neg = String(left !== null && left < 0);
+  }
+
+  const startCell = tr.querySelector('[data-derived="startby"]');
+  if (startCell) {
+    startCell.textContent = startLabel(task);
+    startCell.classList.toggle("start-flag", shouldHaveStarted(task, ref));
+  }
+
+  const fold = tr.querySelector('[data-derived="fold"]');
+  if (fold) fold.textContent = foldLine(task);
+
+  tr.dataset.state = rowState(task, ref);
+
+  if (inWeek(task, ref)) clearStale(tr);
+  else markStale(tr, isDone(task) ? "done — leaves this list" : "moves out of this week");
 }
 
 function sideColumn(days, horizon, ref, withCal) {
@@ -195,14 +287,14 @@ function sideColumn(days, horizon, ref, withCal) {
 function horizonCard(later, ref) {
   const shown = later.slice(0, 6);
   return `
-  <div class="card" id="horizon-card">
-    <div class="card-head">
+  <details class="card fold" id="horizon-card" ${wideScreen() ? "open" : ""}>
+    <summary class="card-head fold-head">
       <div><h2>On the horizon</h2>
         <span class="hint">${later.length
           ? `${later.length} task${later.length === 1 ? "" : "s"} waiting · next arrives ${fmtDate(later[0].surfaces)}`
           : "Nothing waiting"}</span>
       </div>
-    </div>
+    </summary>
     ${shown.length ? `
     <div class="table-wrap">
       <table>
@@ -224,7 +316,7 @@ function horizonCard(later, ref) {
       ? `<div class="card-pad muted small">+ ${later.length - shown.length} more, further out. Every course tab has a Later filter.</div>`
       : ""}`
     : `<div class="card-pad muted small">Everything open is active right now.</div>`}
-  </div>`;
+  </details>`;
 }
 
 function courseTable(rows, ref) {

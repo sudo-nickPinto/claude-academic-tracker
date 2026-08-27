@@ -2,6 +2,9 @@ import { courseIds, courses, scheduleCourses } from "./config.js";
 import { load, subscribe } from "./store.js";
 import { courseTasks, isDone, isNamed } from "./compute.js";
 import { esc, openDialog } from "./ui.js";
+import { openPalette, closePalette, isPaletteOpen } from "./ui/palette.js";
+import { hideBulkBar } from "./ui/bulkbar.js";
+import { closePopover } from "./ui/popover.js";
 
 import { renderDashboard } from "./views/dashboard.js";
 import { renderCalendar } from "./views/calendar.js";
@@ -42,19 +45,43 @@ function render() {
   const { name, param } = currentRoute();
   const view = routes[name];
   outlet.scrollIntoView({ block: "start", behavior: "instant" });
+  // Both live outside #outlet, so replacing the view does not clear them: a bulk bar
+  // would otherwise float over the next page still offering to edit rows that are no
+  // longer on screen.
+  hideBulkBar();
+  closePopover({ restoreFocus: false });
   if (view) view(param);
   else notFound();
   paintNav();
-  app.dataset.nav = "closed";
+  setNav(false);
 }
 
 // ------------------------------------------------------------------- theme
 
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+/**
+ * Resolve the theme preference to a concrete `data-theme` attribute.
+ *
+ * "system" used to mean *removing* the attribute and letting a
+ * `prefers-color-scheme` block in the stylesheet take over. That worked, but it
+ * forced the dark palette to be written twice — once in the media query and once
+ * under `[data-theme="dark"]` — because CSS can't share a declaration block
+ * between them. Resolving here instead means the attribute is always explicit
+ * and the palette exists in exactly one place. The same resolution runs inline in
+ * <head> so the first paint is already correct.
+ */
 function applyTheme() {
   const { theme } = load().prefs;
-  if (theme === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", theme);
+  const resolved = theme === "system" ? (darkQuery.matches ? "dark" : "light") : theme;
+  document.documentElement.setAttribute("data-theme", resolved);
 }
+
+// Following the OS live is the whole point of "system" — without this listener it
+// would only mean "whatever the OS said when the page loaded".
+darkQuery.addEventListener("change", () => {
+  if (load().prefs.theme === "system") applyTheme();
+});
 
 // --------------------------------------------------------------------- nav
 
@@ -115,14 +142,49 @@ applyTheme();
 subscribe(() => { applyTheme(); paintNav(); });
 window.addEventListener("hashchange", render);
 
-document.querySelector("[data-nav-open]").addEventListener("click", () => {
-  app.dataset.nav = app.dataset.nav === "open" ? "closed" : "open";
-});
-document.querySelector("[data-nav-close]").addEventListener("click", () => {
-  app.dataset.nav = "closed";
-});
+const navToggle = document.querySelector("[data-nav-open]");
+
+/** One place to move the drawer, so aria-expanded can never drift from it. */
+function setNav(open) {
+  app.dataset.nav = open ? "open" : "closed";
+  navToggle.setAttribute("aria-expanded", String(open));
+}
+
+navToggle.addEventListener("click", () => setNav(app.dataset.nav !== "open"));
+document.querySelector("[data-nav-close]").addEventListener("click", () => setNav(false));
 document.getElementById("open-help").addEventListener("click", () => {
   openDialog(document.getElementById("help-dialog"));
+});
+
+// ---------------------------------------------------------------- shortcuts
+
+/** True while the keystroke belongs to something the user is typing into. */
+const isTyping = (el) =>
+  el instanceof HTMLElement
+  && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+
+// The app's first global keydown handler. Everything before this was per-element,
+// which is why there was nowhere to hang a shortcut.
+document.addEventListener("keydown", (e) => {
+  if (e.altKey) return;
+
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (isPaletteOpen()) closePalette();
+    else openPalette();
+    return;
+  }
+
+  if (e.metaKey || e.ctrlKey) return;
+
+  // Bare keys only fire when you aren't typing — otherwise "?" in a search box
+  // would open the help panel instead of appearing in the box.
+  if (isTyping(document.activeElement)) return;
+
+  if (e.key === "?") {
+    e.preventDefault();
+    openDialog(document.getElementById("help-dialog"));
+  }
 });
 
 render();
