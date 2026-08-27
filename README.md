@@ -50,6 +50,7 @@ list only when you flip the "include personal" toggle.
 **Course tabs** (CS440, CS391, CS360, ENG216) are the full task lists — add, edit, complete, delete.
 The checkbox in the first column is the fast path for "I finished this." The filter chips above the
 table default to **Active now**; each chip carries a live count, and **Later** shows what's waiting.
+The **Order** control next to them switches between due-date order and one you drag yourself.
 
 ### Editing anything, anywhere
 
@@ -149,6 +150,32 @@ same file changes nothing, and **Remove calendar** puts every number back where 
 **Calendar** (the tab) is a month grid: a dot per deadline, a density bar for how much of the day is
 already committed. Click a day for its events, its deadlines, and what's left of it.
 
+### Ordering a course tab
+
+Every course tab has an **Order** control next to the filter:
+
+- **By due date** (the default) — soonest first, undated work last, ties broken by the row order the
+  workbook had.
+- **Mine** — whatever you dragged it into. Each row grows a `⠿` handle: drag it, or give it keyboard
+  focus and press <kbd>↑</kbd>/<kbd>↓</kbd>. The setting is per course and is saved, so CS360 can be
+  hand-ordered while CS440 stays on dates.
+
+Dragging is implemented with pointer events (`js/dnd.js`), not HTML5 drag-and-drop, because
+`dragstart`/`drop` do nothing on a touchscreen — one code path covers mouse, trackpad, pen and
+finger, and the arrow keys cover everyone a drag doesn't.
+
+**Reordering while filtered is safe.** Only the rows on screen move, and they only move among the
+positions they already occupied between them — a task hidden by the *Active now* filter keeps its
+exact place in the list. The whole course is then renumbered `0..n-1`, so the order stays stable
+however many times you rearrange it. `reorderCourse()` in `js/compute.js` is that rule, and both
+test suites assert it: as a property in `compute.test.mjs`, and end-to-end with a real mouse drag in
+`smoke.test.mjs`.
+
+The position is stored as a new `order` field per task, seeded from `seq` — the workbook's own row
+number — so the first time you switch to **Mine** the list you see is the one you already had. `seq`
+itself is never rewritten: it records which spreadsheet row a task came from, and reordering the
+screen shouldn't forge that.
+
 ### Two computed columns
 
 ```
@@ -175,6 +202,10 @@ each row becomes a card with its column headings inline.
 The folding is driven by CSS container queries on each `.table-wrap`, not by the viewport: the
 dashboard's week list lives in a narrow column while a course table gets the whole page, so on the
 same screen they need to fold at different points.
+
+A hand-ordered course tab carries an extra column for the drag handles, so it folds about 40px
+earlier at every tier, and below 700px it also tightens its cell padding — which buys back more than
+the handle column costs, and keeps the table a table down to exactly the width it managed before.
 
 ### What the colors mean
 
@@ -225,7 +256,7 @@ python3 -m http.server 8347 &          # for the two browser suites
 node tools/tests/compute.test.mjs      # pure logic: dates, Start By, Active/Later, grades, committed time
 node tools/tests/tasks.test.mjs        # the write path: coercion, Done <-> completed, per-list schemas
 node tools/tests/ical.test.mjs         # the .ics reader, against a synthetic Outlook export
-node tools/tests/layout.test.mjs       # zero horizontal overflow, 13 routes x 7 widths
+node tools/tests/layout.test.mjs       # zero horizontal overflow, 17 passes x 9 widths
 node tools/tests/smoke.test.mjs        # the real app in a real browser, including a calendar import
 ```
 
@@ -252,6 +283,7 @@ js/ui/toast.js           toasts, and the Undo they carry
 js/ui/palette.js         the Cmd/Ctrl+K command palette
 js/ui/bulkbar.js         the bar that appears when rows are selected
 js/charts.js             hand-rolled SVG bar and donut charts
+js/dnd.js                pointer-driven row reordering — works with a finger, and with arrow keys
 js/ical.js               RFC 5545 reader — unfolding, RRULE/EXDATE expansion, no DOM
 js/seed.js               GENERATED — tasks and grade shells
 js/reference.js          GENERATED — groups roster and both schedules

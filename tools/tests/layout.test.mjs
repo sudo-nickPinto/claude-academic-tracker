@@ -18,7 +18,7 @@ const ROUTES = [
   "#/course/ENG216", "#/personal", "#/grades", "#/analytics", "#/groups",
   "#/schedule/CS440", "#/schedule/CS360", "#/settings",
 ];
-const WIDTHS = [360, 390, 640, 768, 1024, 1280, 1600];
+const WIDTHS = [360, 390, 640, 700, 768, 900, 1024, 1280, 1600];
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -46,8 +46,37 @@ for (const route of ROUTES) {
   console.log(route.padEnd(20) + cells.join(""));
 }
 
+// The grab handles add a column, so "Order: mine" is a different table. Same gate.
+const COURSES = ROUTES.filter((r) => r.startsWith("#/course/"));
+console.log("\nwith drag handles on");
+console.log("route".padEnd(20) + WIDTHS.map((w) => String(w).padStart(11)).join(""));
+for (const route of COURSES) {
+  const cells = [];
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${BASE}/${route}`, { waitUntil: "networkidle" });
+    await page.selectOption("#f-sort", "manual");
+    await page.click('[data-filter="all"]');
+    await page.waitForTimeout(150);
+    const m = await page.evaluate(() => {
+      const doc = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      let worst = 0, which = "";
+      document.querySelectorAll(".table-wrap").forEach((el) => {
+        const over = el.scrollWidth - el.clientWidth;
+        if (over > worst) { worst = over; which = el.querySelector("th")?.textContent?.trim() || "?"; }
+      });
+      const grips = document.querySelectorAll(".grip").length;
+      return { doc, worst, which, grips };
+    });
+    if (m.doc > 0 || m.worst > 0) fails++;
+    if (!m.grips) { fails++; cells.push("no grips".padStart(11)); continue; }
+    cells.push((m.doc > 0 ? `PAGE+${m.doc}` : m.worst > 0 ? `${m.which}+${m.worst}` : "ok").padStart(11));
+  }
+  console.log(route.padEnd(20) + cells.join(""));
+}
+
 await browser.close();
 console.log(fails
   ? `\n${fails} width(s) overflow horizontally.`
-  : `\nNo horizontal overflow anywhere (${ROUTES.length} routes x ${WIDTHS.length} widths).`);
+  : `\nNo horizontal overflow anywhere (${ROUTES.length + COURSES.length} passes x ${WIDTHS.length} widths).`);
 process.exit(fails ? 1 : 0);

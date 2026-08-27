@@ -1,8 +1,8 @@
 import { courses } from "../config.js";
-import { load, undo } from "../store.js";
+import { load, undo, update } from "../store.js";
 import {
   today, daysLeft, startBy, realisticStart, rowState, shouldHaveStarted, isDone, isNamed,
-  isLater, surfacesOn, horizonOf, hasCalendar,
+  isLater, surfacesOn, horizonOf, hasCalendar, byDue, byOrder, sortModeOf, reorderCourse,
 } from "../compute.js";
 import { esc, fmtDate, fmtHours, fmtPct, bar, daysLabel, emptyState } from "../ui.js";
 import { openTaskDialog } from "./taskdialog.js";
@@ -10,6 +10,7 @@ import { toggleDone, surfaceNow, patchMany, editableFields, FIELD_SPEC } from ".
 import { qe, mountQuickEdit, markStale, clearStale } from "./row.js";
 import { showBulkBar, hideBulkBar } from "../ui/bulkbar.js";
 import { toastUndo } from "../ui/toast.js";
+import { sortableRows } from "../dnd.js";
 
 const filters = {};
 
@@ -78,15 +79,11 @@ export function renderCourse(outlet, id) {
   const open = all.filter((t) => !isDone(t));
   const later = open.filter((t) => isLater(t, ref, horizon));
   const match = MATCHERS[f.status] || MATCHERS.all;
+  const mode = sortModeOf(state, id);
   const visible = all
     .filter((t) => match(t, ref, horizon))
     .filter((t) => !f.q || `${t.task} ${t.details} ${t.source} ${t.notes}`.toLowerCase().includes(f.q.toLowerCase()))
-    .sort((a, b) => {
-      if (!a.due && !b.due) return a.seq - b.seq;
-      if (!a.due) return 1;
-      if (!b.due) return -1;
-      return a.due.localeCompare(b.due) || a.seq - b.seq;
-    });
+    .sort(mode === "manual" ? byOrder : byDue);
 
   const active = open.filter((t) => !isLater(t, ref, horizon));
   const withCal = hasCalendar(state);
@@ -126,6 +123,10 @@ export function renderCourse(outlet, id) {
         done: all.length - open.length,
       })}
       <input id="f-q" type="text" placeholder="Search tasks…" value="${esc(f.q)}" style="width:auto;flex:1 1 200px">
+      <select id="f-sort" style="width:auto" aria-label="Order the list by">
+        <option value="due" ${mode === "due" ? "selected" : ""}>Order: by due date</option>
+        <option value="manual" ${mode === "manual" ? "selected" : ""}>Order: mine</option>
+      </select>
       <span class="spacer"></span>
       <button class="btn btn-sm" type="button" id="select-mode" aria-pressed="${selectMode}"
               title="Use the row checkboxes to select tasks instead of completing them">
@@ -134,11 +135,17 @@ export function renderCourse(outlet, id) {
       <span class="small faint">${visible.length} shown</span>
     </div>
 
-    ${visible.length ? table(id, visible, ref, horizon, state, withCal) : emptyState(
+    ${mode === "manual" ? `<p class="small faint reorder-hint">
+      Drag a <span aria-hidden="true">⠿</span> handle to rearrange, or focus one and use
+      <kbd>↑</kbd> <kbd>↓</kbd>. Only the rows you can see move — anything hidden by the
+      filter stays where it is.</p>` : ""}
+    <p class="sr" role="status" aria-live="polite" id="reorder-status"></p>
+
+    ${visible.length ? table(id, visible, ref, horizon, state, withCal, mode) : emptyState(
       emptyHeadline(f, later.length),
       f.q ? "" : "Add one with the New task button.")}`;
 
-  wire(outlet, id, f);
+  wire(outlet, id, f, mode);
 }
 
 function emptyHeadline(f, laterCount) {
@@ -150,12 +157,13 @@ function emptyHeadline(f, laterCount) {
     : "No open tasks — you're clear.";
 }
 
-function table(listKey, rows, ref, horizon, state, withCal) {
+function table(listKey, rows, ref, horizon, state, withCal, mode) {
   return `
-  <div class="table-wrap">
+  <div class="table-wrap" data-sort="${mode}">
     <table>
       <thead>
         <tr>
+          ${mode === "manual" ? '<th style="width:30px"><span class="sr">Reorder</span></th>' : ""}
           <th style="width:34px"><span class="sr">Done</span></th>
           <th>Task</th>
           <th data-col="t2">Type</th>
@@ -168,7 +176,7 @@ function table(listKey, rows, ref, horizon, state, withCal) {
           <th style="width:52px"></th>
         </tr>
       </thead>
-      <tbody>${rows.map((t) => row(listKey, t, ref, horizon, state, withCal)).join("")}</tbody>
+      <tbody>${rows.map((t) => row(listKey, t, ref, horizon, state, withCal, mode)).join("")}</tbody>
     </table>
   </div>`;
 }
@@ -192,13 +200,16 @@ function laterTag(t, horizon) {
   return `<span class="tag tag-later">Later \u00b7 surfaces ${fmtDate(surfaces)}${t.activeFrom ? " (you set this)" : ""}</span>`;
 }
 
-function row(listKey, t, ref, horizon, state, withCal) {
+function row(listKey, t, ref, horizon, state, withCal, mode) {
   const left = daysLeft(t, ref);
   const late = shouldHaveStarted(t, ref);
   const later = isLater(t, ref, horizon);
 
   return `
   <tr data-state="${later ? "later" : rowState(t, ref)}" data-id="${t.id}" data-later="${later}">
+    ${mode === "manual" ? `<td data-cell="grip"><button class="grip" type="button"
+      aria-label="Reorder ${esc(t.task)}"
+      title="Drag to move this row, or use the arrow keys">⠿</button></td>` : ""}
     <td data-cell="check"><input type="checkbox" class="toggle checkbox" ${
       (selectMode ? selected.has(t.id) : isDone(t)) ? "checked" : ""
     } aria-label="${selectMode ? `Select ${esc(t.task)}` : `Mark ${esc(t.task)} done`}"></td>
@@ -264,7 +275,9 @@ function refreshRow(outlet, listKey, task, f, rerender) {
 
   tr.dataset.state = later ? "later" : rowState(task, ref);
   tr.dataset.later = String(later);
-  tr.querySelector(".toggle").checked = isDone(task);
+  // In select mode the checkbox means "selected", so a quick edit must not
+  // reset it to the task's done state.
+  tr.querySelector(".toggle").checked = selectMode ? selected.has(task.id) : isDone(task);
 
   // Surface only exists on a Later row, so it appears and disappears with one.
   const act = tr.querySelector('[data-cell="act"]');
@@ -292,7 +305,7 @@ const FILTER_NAMES = {
   done: "Completed",
 };
 
-function wire(outlet, id, f) {
+function wire(outlet, id, f, mode) {
   const rerender = () => renderCourse(outlet, id);
 
   outlet.querySelector("#add-task").addEventListener("click", () =>
@@ -303,6 +316,12 @@ function wire(outlet, id, f) {
       f.status = chip.dataset.filter;
       rerender();
     });
+  });
+
+  outlet.querySelector("#f-sort").addEventListener("change", (e) => {
+    const next = e.target.value;
+    update((draft) => { draft.prefs.courseSort[id] = next; });
+    rerender();
   });
 
   const search = outlet.querySelector("#f-q");
@@ -347,6 +366,25 @@ function wire(outlet, id, f) {
   });
 
   paintBulkBar(outlet, id, rerender);
+
+  if (mode !== "manual") return;
+  const body = outlet.querySelector("tbody");
+  if (!body) return;
+
+  sortableRows(body, {
+    announce: (text) => { outlet.querySelector("#reorder-status").textContent = text; },
+    onCommit: (orderedIds, movedId) => {
+      update((draft) => {
+        const list = draft.tasks[id];
+        const next = reorderCourse(list, orderedIds);
+        for (const task of list) task.order = next.get(task.id);
+      });
+      rerender();
+      // Re-rendering replaces the row that was just moved; put the caret back on its
+      // handle so a keyboard user can press the arrow key again without re-finding it.
+      outlet.querySelector(`tr[data-id="${movedId}"] .grip`)?.focus();
+    },
+  });
 }
 
 /**

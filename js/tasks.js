@@ -159,6 +159,9 @@ export function createTask(listKey, fields) {
       status: "Not Started",
       ...(personal ? {} : {
         details: "", type: "Assignment", estMin: null, source: "", activeFrom: null, added: ref,
+        // A new task lands at the end of a manually ordered list: nextSeq() is
+        // always larger than any order value, which are renumbered 0..n-1.
+        order: nextSeq(),
       }),
       ...seeded,
       completed: seeded.status === "Done" ? ref : null,

@@ -10,7 +10,7 @@ import { seedTasks, seedPersonal, seedGrades } from "./seed.js";
 // The key stays at v1 across version bumps: changing it would orphan saved data.
 // `version` records the shape, and normalize() migrates older payloads forward.
 const KEY = "academic-tracker/v1";
-const VERSION = 3;
+const VERSION = 4;
 
 const listeners = new Set();
 let state = null;
@@ -18,13 +18,29 @@ let state = null;
 /** Imported calendar events, kept apart from tasks — they are time, not work. */
 const emptyCalendar = () => ({ events: [], importedAt: null, filename: null, stats: null });
 
+/**
+ * Fills in the fields a task is allowed to be missing.
+ *
+ * `order` is the manual position inside a course tab. It seeds from `seq`, the
+ * workbook's own row order, so turning "My order" on for the first time shows the
+ * list you already had rather than a shuffled one. `seq` itself is never rewritten:
+ * it is provenance — which row of the spreadsheet this came from — and reordering
+ * the screen is not allowed to forge that.
+ */
+const withDefaults = (list) => list.map((t, i) => ({
+  activeFrom: null,
+  ...t,
+  order: typeof t.order === "number" ? t.order : (t.seq ?? i),
+}));
+
 function seedState() {
   return {
     version: VERSION,
-    tasks: structuredClone(seedTasks),
+    tasks: Object.fromEntries(courseIds.map((id) =>
+      [id, withDefaults(structuredClone(seedTasks[id] || []))])),
     personal: structuredClone(seedPersonal),
     grades: structuredClone(seedGrades),
-    prefs: { theme: "system", includePersonalInWeek: false, horizonDays },
+    prefs: { theme: "system", includePersonalInWeek: false, horizonDays, courseSort: {} },
     calendar: emptyCalendar(),
   };
 }
@@ -42,7 +58,8 @@ function normalize(raw) {
     const saved = Array.isArray(raw.tasks?.[id]) ? raw.tasks[id] : [];
     // v1 → v2: activeFrom is the manual override on when a task leaves "Later".
     // Absent means automatic, which is what every pre-v2 task should be.
-    tasks[id] = saved.map((t) => ({ activeFrom: null, ...t }));
+    // v3 → v4: order is the manual position, seeded from the workbook's row order.
+    tasks[id] = withDefaults(saved);
   }
 
   const grades = {};
@@ -59,7 +76,11 @@ function normalize(raw) {
     tasks,
     personal: Array.isArray(raw.personal) ? raw.personal : [],
     grades,
-    prefs: { ...base.prefs, ...(raw.prefs || {}) },
+    prefs: {
+      ...base.prefs,
+      ...(raw.prefs || {}),
+      courseSort: { ...(raw.prefs?.courseSort || {}) },
+    },
     // v2 → v3: an imported Outlook calendar. Absent on every older save, which is
     // correct — no calendar means no committed time, and the app reads the same
     // as it did before the feature existed.
