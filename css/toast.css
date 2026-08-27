@@ -1,0 +1,92 @@
+/* Toasts — the app's only feedback channel for a write that happened somewhere
+ * other than where you are looking.
+ *
+ * A quick edit saves instantly and repaints one row. Without a toast the only
+ * evidence a write occurred is a cell you may not still be looking at, and there
+ * is nowhere to put Undo. The stack is a `role="status"` live region so the same
+ * message reaches a screen reader.
+ */
+
+#toasts {
+  position: fixed;
+  left: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: var(--z-toast);
+
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--sp-2);
+
+  /* The region is always present so the live region is never re-created (a live
+     region added at announce time is frequently missed). It must not eat clicks
+     over the page while empty. */
+  pointer-events: none;
+  max-width: min(380px, calc(100vw - 2 * var(--sp-4)));
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone, var(--text-faint));
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--step--1);
+  animation: toastIn var(--dur-2) var(--ease-out) both;
+}
+.toast[data-tone="success"] { --tone: var(--success); }
+.toast[data-tone="danger"] { --tone: var(--danger); }
+.toast[data-tone="warning"] { --tone: var(--warning); }
+.toast[data-tone="info"] { --tone: var(--progress); }
+
+.toast-msg { flex: 1 1 auto; min-width: 0; }
+.toast-msg strong { font-weight: 700; }
+
+.toast-action {
+  flex: none;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur-1) ease, border-color var(--dur-1) ease;
+}
+.toast-action:hover { background: var(--surface-3); border-color: var(--text-faint); }
+
+.toast-close {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+}
+.toast-close:hover { color: var(--text); }
+
+.toast[data-leaving="true"] { animation: toastOut var(--dur-2) ease both; }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+
+@media (max-width: 620px) {
+  #toasts {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    max-width: none;
+  }
+}

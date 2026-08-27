@@ -11,7 +11,31 @@
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/controls.css">
+<link rel="stylesheet" href="css/popover.css">
+<link rel="stylesheet" href="css/toast.css">
+<link rel="stylesheet" href="css/palette.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
+
+<!-- The theme is always an explicit data-theme attribute; css/tokens.css has no
+     prefers-color-scheme block, which is what lets the dark palette be written
+     once instead of twice. That trade needs the attribute set before first paint,
+     or a dark-theme user gets a white flash while the module graph loads — hence
+     a blocking inline script rather than waiting for js/main.js. applyTheme()
+     re-runs this same resolution and owns it from boot onward. -->
+<script>
+  (function () {
+    var theme = "system";
+    try {
+      var saved = JSON.parse(localStorage.getItem("academic-tracker/v1") || "null");
+      if (saved && saved.prefs && saved.prefs.theme) theme = saved.prefs.theme;
+    } catch (e) { /* unreadable storage — fall through to the system preference */ }
+    if (theme === "system") {
+      theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
 </head>
 <body>
 
@@ -33,7 +57,7 @@
   </aside>
 
   <main class="main">
-    <button class="menu-toggle" type="button" data-nav-open>☰ Menu</button>
+    <button class="menu-toggle" type="button" data-nav-open aria-expanded="false" aria-controls="nav-main">☰ Menu</button>
     <div id="outlet" class="view"></div>
   </main>
 </div>
@@ -48,8 +72,8 @@
   <div class="dialog-body help-body">
     <h3>The views</h3>
     <dl>
-      <dt>Dashboard</dt><dd>Read-only. What is overdue, what lands in the next seven days ranked by date then priority, per-course progress, and a fourteen-day workload forecast.</dd>
-      <dt>CS440 · CS391 · CS360 · ENG216</dt><dd>One view per class, colour-coded. This is where you actually add, edit and complete work.</dd>
+      <dt>Dashboard</dt><dd>What is overdue, what lands in the next seven days ranked by date then priority, per-course progress, and a fourteen-day workload forecast. Priority, status, dates and estimates are all editable in place — click the value.</dd>
+      <dt>CS440 · CS391 · CS360 · ENG216</dt><dd>One view per class, colour-coded. Adding and deleting work happens here; editing can happen here or anywhere the task appears.</dd>
       <dt>Personal</dt><dd>Anything that is not coursework. Five fields, deliberately simple. Kept out of every Dashboard and Analytics number.</dd>
       <dt>Grades</dt><dd>Weights and scores per course, your current grade, and what you would need to average on everything left.</dd>
       <dt>Calendar</dt><dd>A month at a glance: a dot per deadline, a bar for how much of the day is already committed. Click a day for its events, its deadlines and what's left of it.</dd>
@@ -65,6 +89,16 @@
       <dt>Priority &amp; Status</dt><dd>Dropdowns. Status flipping to Done stamps the completion date automatically, and clears it if you flip back.</dd>
       <dt>Due Date</dt><dd>Everything time-based keys off this.</dd>
       <dt>Est. Min</dt><dd>Rough minutes. Drives the workload hours and the Start By date.</dd>
+    </dl>
+
+    <h3>Editing in place</h3>
+    <p>Any value shown as a pill or a date can be clicked wherever it appears — the dashboard, a course tab, Personal, the calendar's day panel. A small menu opens, you pick, and it saves immediately.</p>
+    <dl>
+      <dt>Undo</dt><dd>Every edit raises a toast in the corner with an <strong>Undo</strong> button. Undo reverses the whole edit, including the completion date that a status change stamped or cleared.</dd>
+      <dt>Rows that move</dt><dd>An edit can push a task out of the list you are looking at — marking something Done, or pushing a due date past the horizon. The row stays where it is, marked with a note about where it is going, and leaves the next time the view is drawn. Nothing disappears out from under the cursor.</dd>
+      <dt>Several at once</dt><dd>On a course tab, tick more than one row and a bar appears with priority, status and mark-done. The batch counts as one edit, so one Undo puts all of it back.</dd>
+      <dt>Adding and deleting</dt><dd>Still on the course tabs, through the full edit dialog. In-place editing is for changing a value you already have, not for creating or destroying work.</dd>
+      <dt>Keyboard</dt><dd><span class="kbd">⌘K</span> or <span class="kbd">Ctrl</span>+<span class="kbd">K</span> opens the command palette: jump to any view or search every task by name. <span class="kbd">Esc</span> closes any menu and leaves the value untouched.</dd>
     </dl>
 
     <h3>Columns that calculate themselves</h3>
@@ -110,6 +144,25 @@
     </dl>
   </div>
 </dialog>
+
+<!-- Host nodes for the app-drawn surfaces. All four are body-level on purpose:
+     a table cell sits inside .table-wrap, which both clips (overflow-x) and
+     contains (container-type), so anything anchored to a cell has to be painted
+     from outside it. See the header of css/popover.css. -->
+
+<!-- popover="manual": the quick-edit popover must NOT light-dismiss on any click,
+     because clicking an option inside it is a click, and because it deliberately
+     stays open while you re-pick. openPopover() wires its own outside-click and
+     Escape handling. -->
+<div id="pop" popover="manual" role="dialog" aria-label="Edit field"></div>
+
+<!-- Present from load and never re-created: a live region inserted at announce
+     time is routinely missed by screen readers. -->
+<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<dialog id="palette-dialog" aria-label="Command palette"></dialog>
+
+<div id="bulkbar" hidden></div>
 
 <script type="module" src="js/main.js"></script>
 </body>

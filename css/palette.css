@@ -1,0 +1,154 @@
+/* Command palette (Cmd/Ctrl-K) and the bulk-action bar.
+ *
+ * The palette is a <dialog>, not a popover: it is modal by intent — it takes the
+ * keyboard, dims the page, and traps focus — and showModal() gives all three for
+ * free. That's the opposite of the quick-edit popover, which must stay
+ * non-modal because it edits the thing behind it.
+ */
+
+#palette-dialog {
+  width: min(560px, calc(100vw - 2 * var(--sp-4)));
+  max-height: min(60vh, 520px);
+  /* Sits high rather than centred: the list grows downward, and a centred box
+     would move the input every time the result count changed. */
+  margin-top: 12vh;
+  margin-bottom: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.palette-input-row .kbd { flex: none; }
+
+/* Borderless: the dialog's own edge is the field's edge. */
+#palette-input {
+  flex: 1 1 auto;
+  border: none;
+  background: none;
+  padding: var(--sp-1) 0;
+  font-size: var(--step-1);
+}
+#palette-input:focus-visible { outline: none; box-shadow: none; border: none; }
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-2);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.palette-group {
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) ease;
+}
+.palette-item:hover,
+.palette-item[data-active="true"] { background: var(--surface-2); }
+.palette-item[data-active="true"] { box-shadow: inset 2px 0 0 var(--progress); }
+
+.palette-item-main { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+.palette-item-sub {
+  font-size: var(--step--1);
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-item-meta { flex: none; font-size: var(--step--1); color: var(--text-faint); }
+
+/* The matched substring, so it is obvious why a result is in the list. */
+.palette-item mark {
+  background: color-mix(in oklab, var(--warning) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.palette-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: var(--step--1);
+  color: var(--text-faint);
+}
+.palette-foot span { display: inline-flex; align-items: center; gap: var(--sp-1); }
+
+/* -------------------------------------------------------------- bulk bar */
+
+/* Appears only with a selection, so it is fixed rather than in flow — a bar that
+   pushed the table down every time you ticked a row would move the next row out
+   from under the cursor. */
+#bulkbar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: var(--z-bulkbar);
+
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--step--1);
+  max-width: calc(100vw - 2 * var(--sp-4));
+  overflow-x: auto;
+  animation: bulkIn var(--dur-2) var(--ease-out) both;
+}
+#bulkbar[hidden] { display: none; }
+
+.bulk-count { font-weight: 700; white-space: nowrap; padding-inline: var(--sp-2); }
+.bulk-sep { width: 1px; align-self: stretch; background: var(--border); flex: none; }
+
+@keyframes bulkIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+@media (max-width: 620px) {
+  #bulkbar {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    transform: none;
+    border-radius: var(--radius);
+    justify-content: space-between;
+  }
+  @keyframes bulkIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  #palette-dialog { margin-top: var(--sp-4); max-height: 80vh; }
+}

@@ -5,7 +5,8 @@ import {
   isLater, surfacesOn, horizonOf, hasCalendar,
 } from "../compute.js";
 import { esc, fmtDate, fmtHours, fmtPct, pill, bar, daysLabel, emptyState } from "../ui.js";
-import { openTaskDialog, toggleDone, surfaceNow } from "./taskdialog.js";
+import { openTaskDialog } from "./taskdialog.js";
+import { toggleDone, surfaceNow } from "../tasks.js";
 
 const filters = {};
 

@@ -45,16 +45,35 @@ function render() {
   if (view) view(param);
   else notFound();
   paintNav();
-  app.dataset.nav = "closed";
+  setNav(false);
 }
 
 // ------------------------------------------------------------------- theme
 
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+/**
+ * Resolve the theme preference to a concrete `data-theme` attribute.
+ *
+ * "system" used to mean *removing* the attribute and letting a
+ * `prefers-color-scheme` block in the stylesheet take over. That worked, but it
+ * forced the dark palette to be written twice — once in the media query and once
+ * under `[data-theme="dark"]` — because CSS can't share a declaration block
+ * between them. Resolving here instead means the attribute is always explicit
+ * and the palette exists in exactly one place. The same resolution runs inline in
+ * <head> so the first paint is already correct.
+ */
 function applyTheme() {
   const { theme } = load().prefs;
-  if (theme === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", theme);
+  const resolved = theme === "system" ? (darkQuery.matches ? "dark" : "light") : theme;
+  document.documentElement.setAttribute("data-theme", resolved);
 }
+
+// Following the OS live is the whole point of "system" — without this listener it
+// would only mean "whatever the OS said when the page loaded".
+darkQuery.addEventListener("change", () => {
+  if (load().prefs.theme === "system") applyTheme();
+});
 
 // --------------------------------------------------------------------- nav
 
@@ -115,12 +134,16 @@ applyTheme();
 subscribe(() => { applyTheme(); paintNav(); });
 window.addEventListener("hashchange", render);
 
-document.querySelector("[data-nav-open]").addEventListener("click", () => {
-  app.dataset.nav = app.dataset.nav === "open" ? "closed" : "open";
-});
-document.querySelector("[data-nav-close]").addEventListener("click", () => {
-  app.dataset.nav = "closed";
-});
+const navToggle = document.querySelector("[data-nav-open]");
+
+/** One place to move the drawer, so aria-expanded can never drift from it. */
+function setNav(open) {
+  app.dataset.nav = open ? "open" : "closed";
+  navToggle.setAttribute("aria-expanded", String(open));
+}
+
+navToggle.addEventListener("click", () => setNav(app.dataset.nav !== "open"));
+document.querySelector("[data-nav-close]").addEventListener("click", () => setNav(false));
 document.getElementById("open-help").addEventListener("click", () => {
   openDialog(document.getElementById("help-dialog"));
 });

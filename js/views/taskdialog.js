@@ -1,9 +1,10 @@
 /** The add/edit form, shared by the course views and Personal. */
 
 import { taskTypes, priorities, statuses } from "../config.js";
-import { update, nextSeq, load } from "../store.js";
+import { load } from "../store.js";
 import { today, surfacesOn, isLater, horizonOf } from "../compute.js";
 import { esc, openDialog, meta, fmtDate } from "../ui.js";
+import { createTask, patchTask, deleteTask } from "../tasks.js";
 
 const dialog = () => document.getElementById("task-dialog");
 
@@ -170,12 +171,8 @@ export function openTaskDialog(listKey, existing, onSaved) {
   });
 
   el.querySelector("#f-delete")?.addEventListener("click", () => {
-    if (!confirm(`Delete “${existing.task}”? This can't be undone.`)) return;
-    update((draft) => {
-      const list = isPersonal ? draft.personal : draft.tasks[listKey];
-      const i = list.findIndex((t) => t.id === existing.id);
-      if (i >= 0) list.splice(i, 1);
-    });
+    if (!confirm(`Delete “${existing.task}”?`)) return;
+    deleteTask(listKey, existing.id, { undoLabel: `Deleted “${existing.task}”` });
     el.close();
     onSaved?.();
   });
@@ -184,69 +181,33 @@ export function openTaskDialog(listKey, existing, onSaved) {
   el.querySelector("#f-task").focus();
 }
 
+/**
+ * Hand the form's values to the shared write path.
+ *
+ * Everything this used to do by hand — trimming, `estMin` coercion, the
+ * status↔completed coupling, choosing the right list — now lives in js/tasks.js,
+ * which is also what quick-edit and the bulk bar write through. There is one
+ * definition of what a field means, so the dialog and a two-click popover edit
+ * cannot disagree about it.
+ */
 function commit(listKey, existing, data, isPersonal) {
-  const now = today();
+  const fields = {
+    task: data.task,
+    notes: data.notes,
+    due: data.due,
+    priority: data.priority,
+    status: data.status,
+  };
+  if (!isPersonal) {
+    Object.assign(fields, {
+      details: data.details,
+      type: data.type,
+      estMin: data.estMin,
+      source: data.source,
+      activeFrom: data.activeFrom,
+    });
+  }
 
-  update((draft) => {
-    const list = isPersonal ? draft.personal : draft.tasks[listKey];
-    const fields = {
-      task: data.task.trim(),
-      notes: (data.notes || "").trim(),
-      due: data.due || null,
-      priority: data.priority,
-      status: data.status,
-    };
-    if (!isPersonal) {
-      Object.assign(fields, {
-        details: (data.details || "").trim(),
-        type: data.type,
-        estMin: data.estMin === "" ? null : Number(data.estMin),
-        source: (data.source || "").trim(),
-        activeFrom: data.activeFrom || null,
-      });
-    }
-
-    if (existing) {
-      const target = list.find((t) => t.id === existing.id);
-      Object.assign(target, fields);
-      // Completion date follows status in both directions.
-      if (fields.status === "Done") target.completed ||= now;
-      else target.completed = null;
-    } else {
-      list.push({
-        id: crypto.randomUUID(),
-        seq: nextSeq(),
-        ...fields,
-        ...(isPersonal ? {} : { added: now }),
-        completed: fields.status === "Done" ? now : null,
-      });
-    }
-  });
-}
-
-/** Fast path for the Surface button on a Later row. */
-export function surfaceNow(listKey, id) {
-  const now = today();
-  update((draft) => {
-    const task = draft.tasks[listKey]?.find((t) => t.id === id);
-    if (task) task.activeFrom = now;
-  });
-}
-
-/** Fast path for the checkbox in a task row. */
-export function toggleDone(listKey, id) {
-  const isPersonal = listKey === "Personal";
-  const now = today();
-  update((draft) => {
-    const list = isPersonal ? draft.personal : draft.tasks[listKey];
-    const task = list.find((t) => t.id === id);
-    if (!task) return;
-    if (task.status === "Done") {
-      task.status = "Not Started";
-      task.completed = null;
-    } else {
-      task.status = "Done";
-      task.completed = now;
-    }
-  });
+  if (existing) patchTask(listKey, existing.id, fields, { undoLabel: `Edited “${data.task.trim()}”` });
+  else createTask(listKey, fields);
 }

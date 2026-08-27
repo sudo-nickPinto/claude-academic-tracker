@@ -1,0 +1,234 @@
+/* Controls: the states every form element needs, and the small controls the app
+ * draws for itself. Resting shapes live in components.css; everything here is a
+ * state, a variant, or a control that has no HTML element.
+ */
+
+/* ------------------------------------------------------------- a11y utility */
+
+/* Visible to a screen reader, to nothing else. course.js has been rendering
+   <span class="sr">Done</span> in a table header since the migration, and until
+   now no stylesheet defined `.sr` — so that word was simply visible. */
+.sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* One focus treatment for the whole app. :focus-visible, not :focus, so a mouse
+   click on a button doesn't leave a ring behind it. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--progress);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ------------------------------------------------------------ field states */
+
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) {
+  border-color: var(--field-border-hover);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  border-color: var(--progress);
+  box-shadow: var(--ring);
+}
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--field-disabled-bg);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+/* :invalid alone fires while you are still typing the first character of a
+   required field. :user-invalid waits until you have actually left it wrong. */
+input:user-invalid, select:user-invalid, textarea:user-invalid {
+  border-color: var(--danger);
+}
+input:user-invalid:focus-visible, textarea:user-invalid:focus-visible {
+  box-shadow: var(--ring-danger);
+}
+::placeholder { color: var(--text-faint); }
+
+/* A native select renders as an OS widget — light chrome, light popup, its own
+   font — which reads as a foreign object in the dark theme. Draw the caret. */
+select {
+  appearance: none;
+  padding-right: calc(var(--sp-3) + 14px);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right calc(var(--sp-3) + 4px) center,
+    right var(--sp-3) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+select:disabled { cursor: not-allowed; }
+
+.field-hint { font-size: var(--step--1); color: var(--text-faint); }
+
+/* --------------------------------------------------------------- checkbox */
+
+/* Row toggles had no styling at all — they were bare OS checkboxes, which on
+   macOS means a blue that belongs to no palette here and a hit area smaller
+   than a fingertip. */
+.checkbox {
+  appearance: none;
+  flex: none;
+  width: 17px; height: 17px;
+  border: 1.5px solid var(--field-border-hover);
+  border-radius: 4px;
+  background: var(--field-bg);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background var(--dur-1) ease, border-color var(--dur-1) ease;
+}
+.checkbox::after {
+  content: "";
+  width: 9px; height: 5px;
+  border: 2px solid var(--on-accent);
+  border-top: none; border-right: none;
+  transform: rotate(-45deg) translate(0, -1px) scale(0.6);
+  opacity: 0;
+  transition: opacity var(--dur-1) ease, transform var(--dur-1) var(--ease-out);
+}
+.checkbox:hover:not(:disabled) { border-color: var(--progress); }
+.checkbox:checked {
+  background: var(--progress);
+  border-color: var(--progress);
+}
+.checkbox:checked::after { opacity: 1; transform: rotate(-45deg) translate(0, -1px) scale(1); }
+.checkbox:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ----------------------------------------------------------- filter chips */
+
+/* A row of chips instead of a <select>: the counts are visible without opening
+   anything, and picking a filter is one click rather than three. */
+.chip-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--sp-1);
+}
+.chip-filter {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: 3px var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  font-size: var(--step--1); font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-1) ease, border-color var(--dur-1) ease, color var(--dur-1) ease;
+}
+.chip-filter:hover { background: var(--surface-2); color: var(--text); }
+.chip-filter[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--progress) 14%, var(--surface));
+  border-color: color-mix(in oklab, var(--progress) 45%, transparent);
+  color: color-mix(in oklab, var(--progress) 70%, var(--text));
+}
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  font-weight: 700;
+}
+.chip-filter[aria-pressed="true"] .chip-count { color: inherit; }
+
+/* ------------------------------------------------- quick-edit cell trigger */
+
+/*
+ * THE LAYOUT CONTRACT. Read this before touching .qe.
+ *
+ * tools/tests/layout.test.mjs asserts zero horizontal overflow on the document
+ * AND on every .table-wrap, at 7 widths down to 360px. A quick-edit trigger sits
+ * inside a table cell, so anything that makes it wider than the text it replaced
+ * widens a column, which widens the table, which fails the gate.
+ *
+ * So the trigger renders the exact string the cell rendered before, and .qe may
+ * only ever style: background, box-shadow, outline, color, text-decoration.
+ * Never padding, border-width, margin, font-size, letter-spacing, or an ::after
+ * caret. A closed quick-edit cell is byte-identical in width to plain text.
+ */
+.qe {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-1) ease, box-shadow var(--dur-1) ease;
+}
+/* The affordance is a ground, not a box: it appears in the space the text
+   already occupies rather than adding any of its own. */
+.qe:hover { background: color-mix(in oklab, var(--progress) 12%, transparent); }
+.qe[aria-expanded="true"] { background: color-mix(in oklab, var(--progress) 18%, transparent); }
+
+/* A pill inside a trigger keeps the pill's own metrics — .qe contributes none. */
+.qe > .pill { cursor: pointer; }
+.qe:hover > .pill { border-color: color-mix(in oklab, var(--tone) 60%, transparent); }
+
+/* An empty date reads as "—" but still has to be clickable, and a dash is a small
+   target. ::before with negative insets widens the *hit area* only: an absolutely
+   positioned box is out of flow, so it contributes nothing to the cell's width. */
+.qe[data-empty="true"] {
+  position: relative;
+  color: var(--text-faint);
+}
+.qe[data-empty="true"]::before {
+  content: "";
+  position: absolute;
+  inset: -6px -10px;
+}
+
+/* Saving flashes the cell rather than moving anything. */
+.qe[data-saved="true"] {
+  animation: qeSaved var(--dur-3) ease-out;
+}
+@keyframes qeSaved {
+  from { background: color-mix(in oklab, var(--success) 40%, transparent); }
+  to { background: transparent; }
+}
+
+/* A row whose edit moved it out of its bucket stays put until the next render
+   (so the thing you just clicked doesn't vanish under the cursor) and says so. */
+tr[data-stale] { opacity: 0.75; }
+.stale-cue {
+  display: inline-block;
+  margin-left: var(--sp-2);
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------------- keys */
+
+.kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

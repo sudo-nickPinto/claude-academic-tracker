@@ -200,6 +200,7 @@ tr[data-state="later"] td.num { color: var(--text-faint); }
   padding: var(--sp-6); text-align: center; color: var(--text-muted);
 }
 .empty strong { display: block; color: var(--text); margin-bottom: var(--sp-1); }
+.empty-action { margin-top: var(--sp-3); }
 
 /* --------------------------------------------------------------- progress */
 
@@ -210,7 +211,7 @@ tr[data-state="later"] td.num { color: var(--text-faint); }
 .bar > span {
   display: block; height: 100%; border-radius: 999px;
   background: var(--accent, var(--progress));
-  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 0.5s var(--ease-out);
 }
 .bar-row { display: flex; align-items: center; gap: var(--sp-2); }
 .bar-row .num { font-size: var(--step--1); color: var(--text-muted); min-width: 3.2em; }
@@ -231,12 +232,7 @@ tr[data-state="later"] td.num { color: var(--text-faint); }
 .btn-primary {
   background: var(--accent, var(--progress));
   border-color: transparent;
-  color: #fff;
-}
-:root[data-theme="dark"] .btn-primary,
-:root:not([data-theme="light"]) .btn-primary { color: #16161A; }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .btn-primary { color: #fff; }
+  color: var(--on-accent);
 }
 .btn-primary:hover { filter: brightness(1.06); background: var(--accent, var(--progress)); }
 .btn-sm { padding: 2px var(--sp-2); font-size: var(--step--1); }
@@ -263,15 +259,16 @@ tr[data-state="later"] td.num { color: var(--text-faint); }
 .field > label {
   font-size: var(--step--1); font-weight: 600; color: var(--text-muted);
 }
+/* The resting shape of every control. States — hover, focus, disabled, invalid —
+   and the controls the app draws itself live in css/controls.css. */
 input[type="text"], input[type="date"], input[type="number"], select, textarea {
   width: 100%;
   padding: var(--sp-2) var(--sp-3);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
   border-radius: var(--radius-sm);
-  transition: border-color 0.14s ease;
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease;
 }
-input:hover, select:hover, textarea:hover { border-color: var(--text-faint); }
 textarea { resize: vertical; min-height: 4.5em; }
 
 .form-grid {
@@ -294,7 +291,7 @@ dialog {
   max-height: calc(100vh - 3rem);
 }
 dialog::backdrop { background: rgb(0 0 0 / 0.5); backdrop-filter: blur(2px); }
-dialog[open] { animation: popIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
+dialog[open] { animation: popIn var(--dur-2) var(--ease-out) both; }
 @keyframes popIn {
   from { opacity: 0; transform: translateY(6px) scale(0.99); }
   to { opacity: 1; transform: none; }
@@ -339,9 +336,9 @@ dialog[open] { animation: popIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .chart text { font-size: 11px; fill: var(--text-muted); font-family: var(--font-body); }
 .chart .val { fill: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
 .chart rect.b, .chart path.arc {
-  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-              height 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-              y 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 0.55s var(--ease-out),
+              height 0.55s var(--ease-out),
+              y 0.55s var(--ease-out);
 }
 .chart .heavy-mark { fill: var(--danger); }
 

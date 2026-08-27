@@ -64,12 +64,33 @@ for (const [name, hash] of ROUTES) {
 }
 
 // ------------------------------------------------------------------ CRUD cycle
+
+// Dates relative to the run, never baked in. A fixed due date quietly becomes
+// overdue the day after it passes, so "due-soon styled" and "startBy = due - 2d"
+// both start failing on a calendar date rather than on a code change — which is
+// exactly what they did. These mirror compute.js: local date parts, not UTC.
+const shiftDays = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtShort = (iso) => {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${MONTHS_SHORT[m - 1]} ${d}`;
+};
+
+// +2 days is inside rowState's 3-day "soon" window, and 180 min of work puts the
+// start-by date two days earlier — i.e. today.
+const SMOKE_DUE = shiftDays(2);
+const SMOKE_START_BY = fmtShort(shiftDays(0));
+
 await page.goto(BASE + "/#/course/CS391", { waitUntil: "networkidle" });
 const before = await page.locator("#outlet tbody tr").count();
 
 await page.click("#add-task");
 await page.fill("#f-task", "Playwright smoke task");
-await page.fill("#f-due", "2026-08-26");
+await page.fill("#f-due", SMOKE_DUE);
 await page.fill("#f-est", "180");
 await page.selectOption("#f-priority", "High");
 await page.click("#task-form button[type=submit]");
@@ -78,9 +99,10 @@ check("CRUD add", (await page.locator("#outlet tbody tr").count()) === before + 
 
 const added = page.locator("tbody tr", { hasText: "Playwright smoke task" });
 check("new row is due-soon styled", (await added.getAttribute("data-state")) === "soon",
-  `state=${await added.getAttribute("data-state")}`);
-check("startBy = due - 2d for 180min", (await added.locator("td").nth(8).textContent()).trim() === "Aug 24",
-  (await added.locator("td").nth(8).textContent()).trim());
+  `state=${await added.getAttribute("data-state")} due=${SMOKE_DUE}`);
+check("startBy = due - 2d for 180min",
+  (await added.locator("td").nth(8).textContent()).trim() === SMOKE_START_BY,
+  `${(await added.locator("td").nth(8).textContent()).trim()} (expected ${SMOKE_START_BY})`);
 
 // persistence across reload
 await page.reload({ waitUntil: "networkidle" });

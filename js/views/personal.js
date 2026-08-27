@@ -1,7 +1,8 @@
 import { load } from "../store.js";
 import { today, daysLeft, rowState, isDone, isNamed } from "../compute.js";
 import { esc, fmtDate, pill, daysLabel, emptyState } from "../ui.js";
-import { openTaskDialog, toggleDone } from "./taskdialog.js";
+import { openTaskDialog } from "./taskdialog.js";
+import { toggleDone } from "../tasks.js";
 
 /** Five fields, no analytics, no computed columns. The simplicity is the point. */
 export function renderPersonal(outlet) {

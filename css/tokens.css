@@ -1,5 +1,15 @@
-/* Design tokens. Light is defined on bare :root; only tokens are redefined per theme,
-   so no color has its sole definition inside a media query. */
+/* Design tokens.
+ *
+ * Light lives on bare :root; dark redefines only the tokens that change. The theme is
+ * always an explicit `data-theme` attribute — `applyTheme()` in js/main.js resolves the
+ * "system" preference to a concrete light/dark and watches for it changing, and a tiny
+ * inline script in <head> does the same before first paint so there is no flash.
+ *
+ * Resolving in JS rather than in a media query is what lets the dark palette exist once.
+ * Plain CSS can't share one declaration block between `@media (prefers-color-scheme:dark)`
+ * and `[data-theme="dark"]`, so supporting both meant maintaining the palette twice, and
+ * every token added had to be written in three places. Now it is written in two.
+ */
 
 :root {
   --font-display: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
@@ -18,6 +28,24 @@
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Stacking order, in one place. Top-layer elements (popover, dialog) don't consult
+     these — they can't be stacked against — but the popover fallback path and the
+     bulk bar are ordinary positioned boxes and do. */
+  --z-sticky: 1;
+  --z-scrim: 40;
+  --z-drawer: 50;
+  --z-bulkbar: 60;
+  --z-popover: 70;
+  --z-toast: 80;
+
+  /* Motion. One easing curve, three durations — the curve used to be repeated
+     literally in five rules. */
+  --dur-1: 0.12s;
+  --dur-2: 0.18s;
+  --dur-3: 0.28s;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   --bg: #F6F6F3;
   --surface: #FFFFFF;
@@ -37,58 +65,37 @@
   --progress: #2563EB;
   --blocked: #7C3AED;
 
+  /* Text that sits on a filled accent block. One token instead of the three
+     overlapping rules .btn-primary used to need to pick white vs near-black. */
+  --on-accent: #FFFFFF;
+
   --c-CS440: #3B5BA5;
   --c-CS391: #1F7A6C;
   --c-CS360: #B26A16;
   --c-ENG216: #8E3B4E;
   --c-Personal: #6E7A8A;
 
+  /* Form controls, so an input's resting state is a token rather than an
+     assumption about --surface. */
+  --field-bg: #FFFFFF;
+  --field-border: #D6D6CE;
+  --field-border-hover: #B4B4AA;
+  --field-disabled-bg: #F0F0EC;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.14);
 
   --ring: 0 0 0 3px color-mix(in oklab, var(--progress) 35%, transparent);
+  --ring-danger: 0 0 0 3px color-mix(in oklab, var(--danger) 35%, transparent);
 }
 
-:root:not([data-theme="light"]) {
-  color-scheme: light;
-}
+:root { color-scheme: light; }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; }
-}
-
-/* Dark palette, applied both by system preference and by explicit toggle. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121214;
-    --surface: #1A1A1D;
-    --surface-2: #222227;
-    --surface-3: #2C2C32;
-    --border: #303038;
-    --border-strong: #45454F;
-    --text: #ECECE8;
-    --text-muted: #9C9C96;
-    --text-faint: #75756F;
-
-    --danger: #FF7B72;
-    --warning: #FBBF24;
-    --success: #3FCF8E;
-    --progress: #60A5FA;
-    --blocked: #A78BFA;
-
-    --c-CS440: #8FA9E0;
-    --c-CS391: #5FC9B6;
-    --c-CS360: #E0A863;
-    --c-ENG216: #D98A9C;
-    --c-Personal: #A3AEBD;
-
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.3);
-    --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.6);
-  }
-}
-
+/* The dark palette, defined exactly once. */
 :root[data-theme="dark"] {
   color-scheme: dark;
+
   --bg: #121214;
   --surface: #1A1A1D;
   --surface-2: #222227;
@@ -105,12 +112,20 @@
   --progress: #60A5FA;
   --blocked: #A78BFA;
 
+  --on-accent: #16161A;
+
   --c-CS440: #8FA9E0;
   --c-CS391: #5FC9B6;
   --c-CS360: #E0A863;
   --c-ENG216: #D98A9C;
   --c-Personal: #A3AEBD;
 
+  --field-bg: #202027;
+  --field-border: #3A3A44;
+  --field-border-hover: #52525E;
+  --field-disabled-bg: #1E1E22;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.3);
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 0.6);
 }

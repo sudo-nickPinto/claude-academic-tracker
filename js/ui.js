@@ -42,8 +42,24 @@ export function fmtHours(h) {
 
 export const fmtPct = (frac) => `${Math.round((frac || 0) * 100)}%`;
 
-export const pill = (value) =>
-  value ? `<span class="pill" data-v="${esc(value)}">${esc(value)}</span>` : "";
+/**
+ * Serialize a plain object into HTML attributes. Values are escaped; a `false`,
+ * `null` or `undefined` value drops the attribute, and `true` renders it bare.
+ */
+export function attrs(map = {}) {
+  return Object.entries(map)
+    .filter(([, v]) => v !== false && v !== null && v !== undefined)
+    .map(([k, v]) => (v === true ? ` ${k}` : ` ${k}="${esc(v)}"`))
+    .join("");
+}
+
+/**
+ * A status/priority badge. `opts.attrs` rides on the element itself, which is
+ * what lets a quick-edit trigger tag its pill without a wrapper — a wrapper
+ * would add width, and column width is what the layout gate measures.
+ */
+export const pill = (value, opts = {}) =>
+  value ? `<span class="pill" data-v="${esc(value)}"${attrs(opts.attrs)}>${esc(value)}</span>` : "";
 
 export function bar(frac, extra = "") {
   const pct = Math.max(0, Math.min(1, frac || 0)) * 100;
@@ -57,7 +73,15 @@ export function daysLabel(n) {
   return `${n}d`;
 }
 
-/** Wires <dialog> close buttons and backdrop clicks once per dialog. */
+/**
+ * Wires <dialog> close buttons and backdrop clicks once per dialog, and returns
+ * focus where it came from on close.
+ *
+ * Without the focus return, closing the task dialog drops focus onto <body>, so a
+ * keyboard user lands at the top of the document and has to tab all the way back
+ * to the row they were editing. The listener is registered once, alongside the
+ * other one-time wiring, and reads the anchor off the dialog each time.
+ */
 export function openDialog(dialog) {
   if (!dialog.dataset.wired) {
     dialog.dataset.wired = "1";
@@ -66,10 +90,28 @@ export function openDialog(dialog) {
     });
     dialog.querySelectorAll("[data-close]").forEach((btn) =>
       btn.addEventListener("click", () => dialog.close()));
+    dialog.addEventListener("close", () => {
+      const anchor = dialog._returnFocus;
+      dialog._returnFocus = null;
+      // Only if it's still in the document — the dialog may have deleted the row
+      // whose button opened it.
+      if (anchor?.isConnected) anchor.focus();
+    });
   }
+  dialog._returnFocus = document.activeElement;
   dialog.showModal();
 }
 
-export function emptyState(title, hint) {
-  return `<div class="empty"><strong>${esc(title)}</strong>${hint ? esc(hint) : ""}</div>`;
+/**
+ * The "nothing here" panel. `action` takes `{ label, attrs }` and renders a
+ * button, so an empty list can offer the thing you'd have come here to do
+ * instead of only stating that it is empty.
+ */
+export function emptyState(title, hint, action = null) {
+  const btn = action
+    ? `<button class="btn btn-sm" type="button"${attrs(action.attrs)}>${esc(action.label)}</button>`
+    : "";
+  return `<div class="empty"><strong>${esc(title)}</strong>${hint ? esc(hint) : ""}${
+    btn ? `<div class="empty-action">${btn}</div>` : ""
+  }</div>`;
 }

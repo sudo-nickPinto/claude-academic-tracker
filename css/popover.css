@@ -1,0 +1,130 @@
+/* The quick-edit popover.
+ *
+ * Why this element lives at the end of <body> and not in the cell it edits:
+ * `.table-wrap` is simultaneously `overflow-x: auto` and `container-type:
+ * inline-size` (components.css). Per CSS Overflow 3 a non-visible value on one
+ * axis makes the other compute to `auto`, so the wrapper clips vertically as
+ * well as horizontally; and `container-type` applies layout containment, which
+ * makes the wrapper a containing block for `position: fixed` descendants. An
+ * in-cell popover is therefore clipped AND positioned against the wrong box.
+ *
+ * The top layer is the way out. A `[popover]` element paints above everything,
+ * outside every ancestor's clip and containment, and — because it is out of flow
+ * entirely — it cannot widen the document, which is what keeps layout.test.mjs
+ * green. Placement is JS from getBoundingClientRect(); CSS only draws.
+ */
+
+#pop {
+  /* Overrides the UA sheet's `inset: 0; margin: auto`, which would centre it. */
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  z-index: var(--z-popover);
+
+  min-width: 148px;
+  max-width: min(280px, calc(100vw - 2 * var(--sp-4)));
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  overflow: visible;
+}
+#pop:not(:popover-open) { display: none; }
+
+#pop:popover-open {
+  animation: popoverIn var(--dur-2) var(--ease-out) both;
+}
+/* Anchored growth: from the edge the popover is attached to, not from centre. */
+#pop[data-side="below"] { transform-origin: top left; }
+#pop[data-side="above"] { transform-origin: bottom left; }
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-3px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.pop-label {
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  font-size: var(--step--1);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+.pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+}
+
+.pop-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--step-0);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) ease;
+}
+/* Keyboard and pointer highlight are the same visual state, driven by one
+   attribute, so arrowing down and hovering never disagree about what is next. */
+.pop-item:hover,
+.pop-item[data-active="true"] { background: var(--surface-2); }
+.pop-item[aria-selected="true"] { font-weight: 700; }
+
+/* The check occupies its column whether or not it is drawn, so picking a
+   different option doesn't shift the labels sideways. */
+.pop-check {
+  flex: none;
+  width: 1em;
+  color: var(--progress);
+  visibility: hidden;
+}
+.pop-item[aria-selected="true"] .pop-check { visibility: visible; }
+.pop-item .pill { pointer-events: none; }
+
+.pop-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+.pop-form input { width: 100%; }
+.pop-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pop-actions .spacer { flex: 1 1 auto; }
+
+.pop-sep {
+  height: 1px;
+  margin: var(--sp-1) 0;
+  background: var(--border);
+}
+
+.pop-hint {
+  padding: 0 var(--sp-2) var(--sp-1);
+  font-size: var(--step--1);
+  color: var(--text-faint);
+}
+
+/* Fallback for a browser without the Popover API: openPopover() sets
+   data-fallback and shows the element as an ordinary fixed box. It is then
+   subject to normal stacking, which is what --z-popover is for. */
+#pop[data-fallback="true"] {
+  display: block;
+  z-index: var(--z-popover);
+}
