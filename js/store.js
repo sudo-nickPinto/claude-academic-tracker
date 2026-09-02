@@ -42,6 +42,9 @@ function seedState() {
     grades: structuredClone(seedGrades),
     prefs: { theme: "system", includePersonalInWeek: false, horizonDays, courseSort: {} },
     calendar: emptyCalendar(),
+    // Ids of inbox items (see inboxSync.js) already absorbed into tasks, so the
+    // same shared-gist item is never created twice.
+    inboxSeen: [],
   };
 }
 
@@ -85,6 +88,7 @@ function normalize(raw) {
     // correct — no calendar means no committed time, and the app reads the same
     // as it did before the feature existed.
     calendar: { ...emptyCalendar(), ...(raw.calendar || {}) },
+    inboxSeen: Array.isArray(raw.inboxSeen) ? raw.inboxSeen : [],
   };
 }
 

@@ -2,3 +2,6 @@
 
 # Screenshots written by tools/tests/smoke.test.mjs
 tools/tests/shots/
+
+# Local secret for the tracker inbox — never commit
+.tracker-inbox.local.json

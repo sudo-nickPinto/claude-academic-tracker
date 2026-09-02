@@ -1,5 +1,6 @@
 import { courseIds, courses, scheduleCourses } from "./config.js";
 import { load, subscribe } from "./store.js";
+import { syncInbox } from "./inboxSync.js";
 import { courseTasks, isDone, isNamed } from "./compute.js";
 import { esc, openDialog } from "./ui.js";
 import { openPalette, closePalette, isPaletteOpen } from "./ui/palette.js";
@@ -188,3 +189,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 render();
+
+// Fires after the first paint so a slow or failed network request never blocks
+// showing the page. If it finds anything new, render() runs again to reflect it —
+// paintNav/applyTheme already do, via the subscribe() below, since createTask()
+// saves through the same path a manual add does.
+syncInbox().then((added) => { if (added > 0) render(); });
