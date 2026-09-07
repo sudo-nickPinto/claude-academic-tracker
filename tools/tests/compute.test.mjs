@@ -57,16 +57,29 @@ console.log("   dashboard:", JSON.stringify(s));
 
 const upc = C.upcoming(state, { ref: REF });
 console.log(`   upcoming (${upc.length}):`);
-upc.forEach(t => console.log(`     ${t.due} ${t.course.padEnd(7)} ${t.priority.padEnd(6)} seq=${String(t.seq).padEnd(3)} ${t.task}`));
-const sorted = upc.every((t, i) => i === 0 || upc[i - 1].due <= t.due);
-eq("upcoming sorted by due asc", sorted, true);
+upc.forEach(t => console.log(`     ${t.due} est=${String(t.estMin ?? "-").padEnd(3)} ${t.course.padEnd(7)} ${t.priority.padEnd(6)} seq=${String(t.seq).padEnd(3)} ${t.task}`));
+
+// Overdue always ranks above due-this-week, same invariant as before.
+const overdueFlags = upc.map(t => C.daysLeft(t, REF) < 0);
+const overdueFirst = overdueFlags.every((od, i) => i === 0 || overdueFlags[i - 1] || !od);
+eq("upcoming ranks overdue before due-this-week", overdueFirst, true);
+
+// Within each urgency group, small estimates rank first; missing estimates sort last in their group.
+const estOf = (t) => typeof t.estMin === "number" ? t.estMin : Infinity;
+const rankedWithinGroup = upc.every((t, i) => {
+  if (i === 0) return true;
+  if (overdueFlags[i] !== overdueFlags[i - 1]) return true; // new group starts here
+  return estOf(upc[i - 1]) <= estOf(t);
+});
+eq("upcoming ranks small estimates first within each urgency group", rankedWithinGroup, true);
+
 eq("upcoming excludes Personal by default", upc.some(t => t.course === "Personal"), false);
 eq("upcoming includes Personal when asked",
    C.upcoming(state, { ref: REF, includePersonal: true }).some(t => t.course === "Personal"), true);
 
-// tiebreak: same due date -> priority then seq
-const sameDay = upc.filter(t => t.due === upc[0].due);
-console.log("   same-day ordering:", sameDay.map(t => `${t.priority}/${t.seq}`).join(" "));
+// tiebreak within same estimate: due date, then priority, then seq
+const sameEst = upc.filter(t => estOf(t) === estOf(upc[0]) && overdueFlags[upc.indexOf(t)] === overdueFlags[0]);
+console.log("   same-estimate ordering:", sameEst.map(t => `${t.due}/${t.priority}/${t.seq}`).join(" "));
 
 // --- per-course "Next Big One" ---
 for (const c of C.perCourse(state, REF)) {

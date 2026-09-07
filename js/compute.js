@@ -306,9 +306,18 @@ export function perCourse(state, ref = today()) {
   });
 }
 
+/** estMin ascending, small tasks first; missing/non-numeric estimates sort last. */
+const estMinValue = (t) => (typeof t.estMin === "number" ? t.estMin : Infinity);
+
 /**
- * The morning list: everything overdue or landing within a week, ranked.
- * Sorting by due date ascending naturally floats overdue items to the top.
+ * The morning list: everything overdue or landing within a week, ranked so the
+ * quick wins surface first — clear those, then settle into the longer ones.
+ *
+ * Overdue still always ranks above the rest (it's still the top of the list,
+ * same invariant as before); within that group and within the due-this-week
+ * group, tasks rank by estimated time ascending, so a task with no estimate
+ * never gets buried behind one that has been sized up — it just falls to the
+ * back of its own urgency group instead of the very back of the whole list.
  */
 export function upcoming(state, { ref = today(), includePersonal = false } = {}) {
   const pool = courseTasks(state);
@@ -321,10 +330,15 @@ export function upcoming(state, { ref = today(), includePersonal = false } = {})
       const left = daysLeft(t, ref);
       return left < 0 || left <= 7;
     })
-    .sort((a, b) =>
-      a.due.localeCompare(b.due) ||
-      (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1) ||
-      a.seq - b.seq);
+    .sort((a, b) => {
+      const overdueA = daysLeft(a, ref) < 0;
+      const overdueB = daysLeft(b, ref) < 0;
+      if (overdueA !== overdueB) return overdueA ? -1 : 1;
+      return estMinValue(a) - estMinValue(b) ||
+        a.due.localeCompare(b.due) ||
+        (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1) ||
+        a.seq - b.seq;
+    });
 }
 
 /**
