@@ -126,7 +126,7 @@ function weekCard(week, ref, includePersonal) {
     <div class="card-head">
       <div>
         <h2>Overdue &amp; the next seven days</h2>
-        <span class="hint">Sorted by due date, then priority.</span>
+        <span class="hint">Overdue first, then shortest estimate — clear the quick ones first.</span>
       </div>
       <label class="switch">
         <input type="checkbox" id="include-personal" ${includePersonal ? "checked" : ""}>
